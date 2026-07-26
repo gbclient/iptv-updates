@@ -1,0 +1,12 @@
+.gradle/
+build/
+app/build/
+local.properties
+.idea/
+*.iml
+.DS_Store
+build_tools/android_sdk/
+build_tools/gradle/
+build_tools/jdk17_extracted/
+*.zip
+*.gz

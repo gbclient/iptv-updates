@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">IPTV Player</string>
+    <string name="banner_title">IPTV Player</string>
+    <string name="no_channels">Nessun canale trovato</string>
+    <string name="loading">Caricamento...</string>
+    <string name="web_server_info">Apri il browser su %1$s</string>
+    <string name="playlist_url_hint">URL della playlist M3U</string>
+    <string name="load_playlist">Carica Playlist</string>
+    <string name="firebase_url">https://iptv-player-eac9e-default-rtdb.europe-west1.firebasedatabase.app</string>
+</resources>

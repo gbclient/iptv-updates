@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPTV Player - Configurazione</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);
+color:#eee;display:flex;justify-content:center;align-items:flex-start;
+min-height:100vh;padding:20px
+}
+.container{
+background:rgba(22,33,62,0.92);padding:24px;border-radius:14px;
+width:100%;max-width:500px;box-shadow:0 8px 32px rgba(0,0,0,0.4);margin:10px 0
+}
+h1{color:#e94560;text-align:center;font-size:20px;margin-bottom:4px}
+.sub{text-align:center;color:#8899aa;margin-bottom:16px;font-size:11px}
+.section{margin-bottom:14px}
+.section-title{color:#e94560;font-size:13px;font-weight:600;margin-bottom:8px;border-bottom:1px solid rgba(233,69,96,.2);padding-bottom:4px}
+.row{display:flex;gap:6px}
+.row>div{flex:1}
+label{display:block;margin-bottom:2px;color:#aabbcc;font-size:10px}
+input,select,textarea{
+width:100%;padding:9px;border:2px solid #0f3460;border-radius:6px;
+background:#0f3460;color:#fff;font-size:13px;outline:none
+}
+input:focus,select:focus{border-color:#e94560}
+textarea{font-family:monospace;resize:vertical}
+.code-input{text-transform:uppercase;text-align:center;font-size:20px;font-weight:700;letter-spacing:3px}
+.presets{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px}
+.preset-btn{
+padding:4px 7px;border:1px solid #0f3460;border-radius:4px;
+background:#0a1625;color:#aabbcc;font-size:10px;cursor:pointer
+}
+.preset-btn:hover{border-color:#e94560;color:#e94560}
+.tab-row{display:flex;gap:6px;margin-bottom:8px}
+.tab-btn{
+flex:1;padding:7px;text-align:center;border-radius:5px;cursor:pointer;
+font-size:11px;font-weight:600;border:1px solid #0f3460;background:#0a1625;color:#aabbcc
+}
+.tab-btn.active{background:#e94560;color:#fff;border-color:#e94560}
+.send-btn{padding:12px;background:#e94560;color:#fff;border:none;border-radius:7px;font-size:15px;font-weight:600;cursor:pointer;width:100%}
+.send-btn:hover{background:#c23152}
+.send-btn:disabled{background:#555;cursor:not-allowed}
+.status{text-align:center;margin-top:10px;padding:10px;border-radius:6px;display:none;font-weight:500;font-size:12px}
+.status.show{display:block}
+.ok{background:rgba(27,94,32,.8);color:#a5d6a7}
+.err{background:rgba(183,28,28,.8);color:#ef9a9a}
+.inf{background:rgba(15,52,96,.8);color:#90caf9}
+.hint{font-size:9px;color:#667788;margin-top:3px}
+.toggle-link{color:#e94560;font-size:10px;cursor:pointer;float:right;font-weight:400}
+.collapsed{display:none}
+.hidden{display:none}
+</style>
+</head>
+<body>
+<div class="container">
+<h1>IPTV Player</h1>
+<p class="sub">Configurazione via Firebase</p>
+
+<div class="section">
+<div class="section-title">Codice Firestick</div>
+<input type="text" id="fc" placeholder="A469E97A" maxlength="8" class="code-input">
+<div class="hint">Codice di 8 caratteri che vedi in alto sullo schermo del Firestick</div>
+</div>
+
+<div class="section">
+<div class="section-title">Tipo Playlist</div>
+<div class="tab-row">
+<div id="tabM3u" class="tab-btn active" onclick="switchTab('m3u')">M3U URL</div>
+<div id="tabXc" class="tab-btn" onclick="switchTab('xc')">Xtream Codes</div>
+</div>
+
+<div id="panelM3u">
+<div class="row"><div><label>Nome</label><input type="text" id="plName" placeholder="Italia Premium"></div></div>
+<input type="text" id="m3uUrl" placeholder="http://server.com:8080/get.php?username=X&amp;password=Y&amp;type=m3u_plus" style="margin-top:6px">
+</div>
+
+<div id="panelXc" class="hidden">
+<div><label>Server (es. http://server.com:8080)</label><input type="text" id="xcServer" placeholder="http://server.com:8080"></div>
+<div class="row" style="margin-top:6px">
+<div><label>Username</label><input type="text" id="xcUser"></div>
+<div><label>Password</label><input type="text" id="xcPass"></div>
+</div>
+</div>
+</div>
+
+<div class="section">
+<div class="section-title">Anti-Rilevamento <span class="toggle-link" onclick="toggle('antiDetect')">apri</span></div>
+<div id="antiDetect" class="collapsed">
+<div><label>User-Agent</label><input type="text" id="ua" value="VLC/3.0.20 LibVLC/3.0.20">
+<div class="presets">
+<button type="button" class="preset-btn" onclick="setUA('VLC/3.0.20 LibVLC/3.0.20')">VLC</button>
+<button type="button" class="preset-btn" onclick="setUA('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36')">Chrome</button>
+<button type="button" class="preset-btn" onclick="setUA('Mozilla/5.0 (Linux; Android 14; SM-S908B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Mobile Safari/537.36')">Android</button>
+<button type="button" class="preset-btn" onclick="setUA('Mozilla/5.0 (iPhone; CPU iPhone OS 17_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.6 Mobile/15E148 Safari/604.1')">iPhone</button>
+<button type="button" class="preset-btn" onclick="setUA('okhttp/4.12.0')">OkHttp</button>
+<button type="button" class="preset-btn" onclick="setUA('IPTVSmartersPro')">Smarters</button>
+</div>
+</div>
+<div class="row" style="margin-top:8px">
+<div><label>Referer</label><input type="text" id="rf" placeholder="http://server.com/"></div>
+<div><label>Origin</label><input type="text" id="og" placeholder="http://server.com/"></div>
+</div>
+<div class="row" style="margin-top:8px">
+<div><label>X-Forwarded-For (IP falso)</label><input type="text" id="xf" placeholder="1.2.3.4"></div>
+<div><label>Cookie</label><input type="text" id="ck" placeholder="session=abc; token=xyz"></div>
+</div>
+<div style="margin-top:8px"><label>Header personalizzati (Nome: Valore, uno per riga)</label><textarea id="ch" rows="2" placeholder="Authorization: Bearer token123"></textarea></div>
+</div>
+</div>
+
+<div class="section">
+<div class="section-title">Proxy / DNS <span class="toggle-link" onclick="toggle('proxySection')">apri</span></div>
+<div id="proxySection" class="collapsed">
+<div class="row">
+<div><label>Tipo</label><select id="pt"><option value="">Nessuno</option><option value="socks">SOCKS5</option><option value="http">HTTP</option></select></div>
+<div><label>Host</label><input type="text" id="ph" placeholder="proxy.esempio.com"></div>
+<div><label>Porta</label><input type="number" id="pp" placeholder="1080"></div>
+</div>
+<div class="row" style="margin-top:8px">
+<div><label>Username</label><input type="text" id="pu"></div>
+<div><label>Password</label><input type="text" id="pw"></div>
+</div>
+<div style="margin-top:8px"><label>DNS personalizzato</label><input type="text" id="dns" placeholder="1.1.1.1"></div>
+<div style="margin-top:8px"><label>EPG URL (guida TV)</label><input type="text" id="epg" placeholder="http://server.com/xmltv.php?username=X&amp;password=Y"></div>
+<div class="hint">Lascia vuoto: l'app trova proxy gratis da sola. DNS consigliato: Cloudflare 1.1.1.1 o Google 8.8.8.8</div>
+</div>
+</div>
+
+<button class="send-btn" onclick="send()" id="btn">Invia al Firestick</button>
+<div id="status" class="status"></div>
+
+<div style="margin-top:12px;padding:10px;background:rgba(233,69,96,.1);border-radius:8px;font-size:11px;line-height:1.5;color:#ccc">
+<b style="color:#e94560">Come funziona:</b> Inserisci il codice di 8 caratteri del Firestick, l'URL M3U (o Xtream Codes), e clicca Invia. Entro 5 secondi il Firestick riceve la configurazione.
+</div>
+</div>
+
+<script>
+const FIREBASE = 'https://iptv-player-eac9e-default-rtdb.europe-west1.firebasedatabase.app';
+
+function toggle(id){document.getElementById(id).classList.toggle('collapsed')}
+function setUA(v){document.getElementById('ua').value=v}
+function switchTab(t){
+document.getElementById('tabM3u').classList.toggle('active',t==='m3u');
+document.getElementById('tabXc').classList.toggle('active',t==='xc');
+document.getElementById('panelM3u').classList.toggle('hidden',t!=='m3u');
+document.getElementById('panelXc').classList.toggle('hidden',t!=='xc');
+}
+
+async function send(){
+const fc=document.getElementById('fc').value.trim().toUpperCase();
+if(!fc||fc.length<6){show('Inserisci il codice di 8 caratteri dal Firestick','err');return}
+
+const isXc=document.getElementById('tabXc').classList.contains('active');
+let url,name;
+if(isXc){
+const s=document.getElementById('xcServer').value.trim();
+const u=document.getElementById('xcUser').value.trim();
+const p=document.getElementById('xcPass').value.trim();
+if(!s||!u||!p){show('Inserisci Server, Username e Password','err');return}
+url='xc://'+btoa(s)+'/'+btoa(u)+'/'+btoa(p);
+name=u;
+}else{
+url=document.getElementById('m3uUrl').value.trim();
+name=document.getElementById('plName').value.trim()||'Playlist';
+if(!url){show('Inserisci URL M3U','err');return}
+}
+
+const ch={};
+document.getElementById('ch').value.trim().split('\n').forEach(l=>{
+const i=l.indexOf(':');if(i>0)ch[l.substring(0,i).trim()]=l.substring(i+1).trim();
+});
+
+const config={
+m3uUrl:url,playlistName:name,
+userAgent:document.getElementById('ua').value.trim()||'VLC/3.0.20 LibVLC/3.0.20',
+referer:document.getElementById('rf').value.trim(),
+origin:document.getElementById('og').value.trim(),
+xForwardedFor:document.getElementById('xf').value.trim(),
+cookies:document.getElementById('ck').value.trim(),
+proxyHost:document.getElementById('ph').value.trim(),
+proxyPort:parseInt(document.getElementById('pp').value)||0,
+proxyType:document.getElementById('pt').value,
+proxyUser:document.getElementById('pu').value.trim(),
+proxyPass:document.getElementById('pw').value.trim(),
+dnsServer:document.getElementById('dns').value.trim(),
+epgUrl:document.getElementById('epg').value.trim(),
+customHeaders:ch
+};
+
+const btn=document.getElementById('btn');
+btn.disabled=true;btn.textContent='Invio...';
+show('Invio al Firestick...','inf');
+
+try{
+const r=await fetch(FIREBASE+'/configs/'+fc+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(config)});
+if(r.ok){
+show('OK! Il Firestick ricevera\' la playlist entro 5 secondi.','ok');
+localStorage.setItem('last_fc',fc);
+}else{
+show('Errore ('+r.status+'). Riprova.','err');
+}
+}catch(e){show('Errore di rete: '+e.message,'err');}
+btn.disabled=false;btn.textContent='Invia al Firestick';
+}
+
+function show(m,t){const s=document.getElementById('status');s.textContent=m;s.className='status show '+t}
+document.getElementById('fc').value=localStorage.getItem('last_fc')||'';
+</script>
+</body>
+</html>

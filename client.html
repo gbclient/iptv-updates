@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPTV Player - Gestione Playlist</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:linear-gradient(135deg,#1a1a2e,#16213e,#0f3460);color:#eee;min-height:100vh;padding:20px}
+.c{max-width:520px;margin:0 auto}
+.header{text-align:center;margin-bottom:24px}
+.header h1{color:#e94560;font-size:24px}
+.header p{color:#8899aa;font-size:13px;margin-top:4px}
+.card{background:rgba(22,33,62,.92);border-radius:12px;padding:20px;margin-bottom:14px}
+.card h2{color:#e94560;font-size:14px;margin-bottom:12px}
+.input{width:100%;padding:12px;border:2px solid #0f3460;border-radius:8px;background:#0f3460;color:#fff;font-size:14px;outline:none;margin-bottom:8px}
+.input:focus{border-color:#e94560}
+.code-input{text-transform:uppercase;text-align:center;font-size:20px;font-weight:700;letter-spacing:3px}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.btn{width:100%;padding:12px;background:#e94560;color:#fff;border:none;border-radius:8px;font-size:15px;font-weight:600;cursor:pointer}
+.btn:hover{background:#c23152}
+.btn-sm{padding:6px 12px;font-size:11px;border-radius:6px;border:1px solid #e94560;background:transparent;color:#e94560;cursor:pointer}
+.btn-sm.del{border-color:#ef5350;color:#ef5350}
+.tabs{display:flex;gap:6px;margin-bottom:12px}
+.tab{flex:1;padding:8px;text-align:center;border-radius:6px;cursor:pointer;font-size:12px;font-weight:600;border:1px solid #0f3460;background:#0a1625;color:#aabbcc}
+.tab.active{background:#e94560;color:#fff;border-color:#e94560}
+.pl-item{display:flex;align-items:center;justify-content:space-between;padding:10px;margin-bottom:6px;border-radius:8px;background:rgba(15,52,96,.5);border:1px solid #0f3460}
+.pl-info{flex:1;min-width:0}
+.pl-name{color:#fff;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-url{color:#667788;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pl-actions{display:flex;gap:4px}
+.status{text-align:center;margin-top:8px;padding:8px;border-radius:6px;display:none;font-size:12px;font-weight:500}
+.status.show{display:block}
+.ok{background:rgba(27,94,32,.8);color:#a5d6a7}
+.err{background:rgba(183,28,28,.8);color:#ef9a9a}
+.hint{font-size:10px;color:#667788;margin-top:4px}
+.empty{text-align:center;color:#556677;font-size:13px;padding:12px}
+</style>
+</head>
+<body>
+<div class="c">
+<div class="header"><h1>IPTV Player</h1><p>Gestisci le tue playlist</p></div>
+<div class="card"><h2>1. Il tuo Codice</h2><input class="input code-input" id="code" placeholder="A468E97A" maxlength="8"><div class="hint">Codice di 8 caratteri in alto sul Firestick</div><button class="btn" onclick="connect()" id="cb">Connetti</button></div>
+<div class="card" id="pc" style="display:none"><h2>2. Le tue Playlist <span id="ct"></span></h2><div id="pl"><div class="empty">Inserisci il codice e clicca Connetti</div></div></div>
+<div class="card" id="ac" style="display:none"><h2>3. Aggiungi Nuova</h2><div class="tabs"><div class="tab active" id="tm" onclick="st('m3u')">M3U URL</div><div class="tab" id="tx" onclick="st('xc')">Xtream Codes</div><div class="tab" id="ts" onclick="st('st')">Stalker MAC</div></div><div id="pm"><input class="input" id="pn" placeholder="Nome playlist"><input class="input" id="mu" placeholder="http://server.com:8080/get.php?..."></div><div id="px" style="display:none"><input class="input" id="xs" placeholder="Server"><div class="row"><input class="input" id="xu" placeholder="Username"><input class="input" id="xp" placeholder="Password"></div></div><div id="ps" style="display:none"><input class="input" id="ss" placeholder="Server (es. http://server.com/c/)"><input class="input" id="sm" placeholder="MAC (es. 00:1A:79:XX:XX:XX)"></div><button class="btn" onclick="ad()" id="ab">Invia al Firestick</button></div>
+<div id="st" class="status"></div>
+</div>
+<script>
+var _0x='aHR0cHM6Ly9pcHR2LXBsYXllci1lYWM5ZS1kZWZhdWx0LXJ0ZGIuZXVyb3BlLXdlc3QxLmZpcmViYXNlZGF0YWJhc2UuYXBw';
+function _d(b64){return atob(b64)}
+var _FB=_d(_0x),dc='';
+function s(m,t){document.getElementById('st').textContent=m;document.getElementById('st').className='status show '+t}
+function st(t){document.getElementById('tm').classList.toggle('active',t==='m3u');document.getElementById('tx').classList.toggle('active',t==='xc');document.getElementById('ts').classList.toggle('active',t==='st');document.getElementById('pm').style.display=t==='m3u'?'block':'none';document.getElementById('px').style.display=t==='xc'?'block':'none';document.getElementById('ps').style.display=t==='st'?'block':'none'}
+async function connect(){var c=document.getElementById('code').value.trim().toUpperCase();if(!c||c.length<6){s('Inserisci il codice','err');return}dc=c;localStorage.setItem('iptv_code',c);s('Connesso a '+c,'ok');document.getElementById('pc').style.display='block';document.getElementById('ac').style.display='block';document.getElementById('cb').textContent='Riconnetti';lc()}
+async function lc(){try{var r=await fetch(_FB+'/configs/'+dc+'.json');var d=await r.json();var pl=document.getElementById('pl');if(!d||d===null||!d.m3uUrl){pl.innerHTML='<div class="empty">Nessuna playlist salvata</div>';document.getElementById('ct').textContent='';return}document.getElementById('ct').textContent='(1)';pl.innerHTML='<div class="pl-item"><div class="pl-info"><div class="pl-name">'+_e(d.playlistName||'Cloud')+'</div><div class="pl-url">'+(d.m3uUrl||'').substring(0,60)+'</div></div><div class="pl-actions"><button class="btn-sm del" onclick="dp()">Elimina</button></div></div>'}catch(e){}}
+async function ad(){if(!dc){s('Prima inserisci il codice','err');return}var isXc=document.getElementById('tx').classList.contains('active');var isSt=document.getElementById('ts').classList.contains('active');var u,n;if(isSt){var sv=document.getElementById('ss').value.trim(),ma=document.getElementById('sm').value.trim();if(!sv||!ma){s('Server e MAC','err');return}u='stalker://'+btoa(sv)+'/'+ma.replace(/[:-]/g,'').toUpperCase();n='STB '+ma.substring(ma.length-6)}else if(isXc){var sv=document.getElementById('xs').value.trim(),un=document.getElementById('xu').value.trim(),pw=document.getElementById('xp').value.trim();if(!sv||!un||!pw){s('Server, User, Pass','err');return}u='xc://'+btoa(sv)+'/'+btoa(un)+'/'+btoa(pw);n=un}else{u=document.getElementById('mu').value.trim();n=document.getElementById('pn').value.trim()||'Playlist';if(!u){s('URL M3U','err');return}}var btn=document.getElementById('ab');btn.disabled=true;btn.textContent='Invio...';try{var cf={m3uUrl:u,playlistName:n,userAgent:'VLC/3.0.20 LibVLC/3.0.20',referer:'',origin:'',xForwardedFor:'',cookies:'',proxyHost:'',proxyPort:0,proxyType:'',proxyUser:'',proxyPass:'',dnsServer:'',epgUrl:'',customHeaders:{}};var r=await fetch(_FB+'/configs/'+dc+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(cf)});if(r.ok){s('Playlist inviata! Riavvia il Firestick.','ok')}else{s('Errore ('+r.status+')','err')}}catch(e){s('Errore: '+e.message,'err')}btn.disabled=false;btn.textContent='Invia al Firestick'}
+async function dp(){if(!dc||!confirm('Eliminare la playlist?'))return;try{await fetch(_FB+'/configs/'+dc+'.json',{method:'DELETE'});s('Rimossa. Riavvia il Firestick.','ok');lc()}catch(e){s('Errore: '+e.message,'err')}}
+function _e(s){return(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+document.getElementById('code').value=localStorage.getItem('iptv_code')||'';
+if(document.getElementById('code').value)connect();
+</script>
+</body>
+</html>

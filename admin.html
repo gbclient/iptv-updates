@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IPTV Admin</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:-apple-system,sans-serif;background:#0d1117;color:#c9d1d9;min-height:100vh;padding:20px}
+.c{max-width:650px;margin:0 auto}
+h1{color:#e94560;text-align:center;margin-bottom:4px}
+.sub{text-align:center;color:#667788;font-size:12px;margin-bottom:20px}
+.card{background:#161b22;border:1px solid #21262d;border-radius:8px;padding:16px;margin-bottom:12px}
+h2{color:#e94560;font-size:14px;margin-bottom:10px}
+.input,select{width:100%;padding:10px;background:#0d1117;border:1px solid #30363d;border-radius:6px;color:#c9d1d9;font-size:13px;outline:none;margin-bottom:6px}
+.input:focus{border-color:#e94560}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.btn{width:100%;padding:10px;background:#e94560;color:#fff;border:none;border-radius:6px;font-size:14px;font-weight:600;cursor:pointer}
+.btn:hover{background:#c23152}
+.btn-sm{padding:5px 10px;border-radius:4px;border:1px solid #30363d;background:transparent;color:#8899aa;cursor:pointer;font-size:10px}
+.btn-sm.del{color:#ef5350;border-color:#3a1f1f}
+.btn-sm.ok{color:#4caf50;border-color:#1f3a1f}
+.tabs{display:flex;gap:6px;margin-bottom:10px}
+.tab{flex:1;padding:7px;text-align:center;border-radius:5px;cursor:pointer;font-size:11px;border:1px solid #30363d;background:#0d1117;color:#8899aa}
+.tab.active{background:#e94560;color:#fff}
+.cli{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;margin-bottom:6px;border-radius:6px;background:#0d1117;border:1px solid #21262d}
+.cli-code{color:#e94560;font-weight:700;font-size:14px}
+.cli-date{font-size:10px;color:#667788}
+.act-badge{padding:2px 6px;border-radius:3px;font-size:9px;margin-left:4px}
+.act-yes{background:#1b5e20;color:#a5d6a7}
+.act-no{background:#b71c1c;color:#ef9a9a}
+.act-exp{background:#e65100;color:#ffe0b2}
+.status{text-align:center;padding:8px;border-radius:6px;display:none;font-size:12px;margin-top:4px}
+.status.show{display:block}
+.ok{background:rgba(27,94,32,.6);color:#a5d6a7}
+.err{background:rgba(183,28,28,.6);color:#ef9a9a}
+</style>
+</head>
+<body>
+<div class="c">
+<h1>IPTV Admin Panel</h1>
+<p class="sub">Gestione Clienti</p>
+
+<div class="card">
+<h2>Attivazione</h2>
+<input class="input" id="actCode" placeholder="Codice dispositivo" style="text-transform:uppercase;text-align:center;font-size:14px;font-weight:700;letter-spacing:2px">
+<select class="input" id="actPeriod" style="font-size:12px">
+<option value="0">Senza scadenza</option>
+<option value="1">1 mese</option>
+<option value="3">3 mesi</option>
+<option value="6">6 mesi</option>
+<option value="12">12 mesi</option>
+<option value="-1">Disattiva</option>
+</select>
+<button class="btn" style="background:#4caf50" onclick="activate()">Conferma</button>
+<div style="display:flex;gap:6px;margin-top:6px">
+<button class="btn" style="flex:1;background:#30363d;font-size:11px" onclick="activateAll(1)">Tutti 1 mese</button>
+<button class="btn" style="flex:1;background:#30363d;font-size:11px" onclick="activateAll(3)">Tutti 3 mesi</button>
+<button class="btn" style="flex:1;background:#30363d;font-size:11px" onclick="activateAll(6)">Tutti 6 mesi</button>
+<button class="btn" style="flex:1;background:#30363d;font-size:11px" onclick="activateAll(12)">Tutti 12 mesi</button>
+</div>
+    <div id="actStatus" style="text-align:center;font-size:12px;margin-top:4px"></div>
+</div>
+
+<div class="card">
+<h2>Richiedi Donazione</h2>
+<div style="display:flex;gap:6px;align-items:center;margin-bottom:4px">
+<button class="btn-sm" id="donBtn" style="background:#333;color:#8899aa;border-color:#555" onclick="toggleDonation()">⏹ Richiedi OFF</button>
+<select id="donPeriod" style="padding:4px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;font-size:10px">
+<option value="0">Senza scadenza</option>
+<option value="7">7 giorni</option>
+<option value="30" selected>30 giorni</option>
+<option value="60">60 giorni</option>
+<option value="90">90 giorni</option>
+</select>
+</div>
+<div style="font-size:10px;color:#667788;margin-top:4px" id="donStatus">Disattivo</div>
+</div>
+
+<div class="card">
+<h2>Clienti Registrati <span id="clientCount" style="font-size:11px;color:#667788;font-weight:normal"></span> <button class="btn-sm" onclick="loadClients()" style="float:right">Aggiorna</button></h2>
+<div style="display:flex;gap:6px;margin-bottom:8px;align-items:center">
+<button class="btn-sm" id="autoBtn" style="background:#333;color:#8899aa;border-color:#555" onclick="toggleAuto()">⏹ Auto OFF</button>
+<select id="autoPeriod" style="padding:4px;background:#0d1117;border:1px solid #30363d;border-radius:4px;color:#c9d1d9;font-size:10px">
+<option value="1">1 mese</option>
+<option value="3" selected>3 mesi</option>
+<option value="6">6 mesi</option>
+<option value="12">12 mesi</option>
+</select>
+<span id="autoCount" style="font-size:10px;color:#667788"></span>
+</div>
+<div id="clientsList">Caricamento...</div>
+<div id="showMoreWrap" style="display:none;text-align:center;margin-top:4px">
+<button class="btn-sm" id="showMoreBtn" onclick="toggleShowAll()" style="color:#e94560">Mostra tutti</button>
+</div>
+</div>
+
+<div class="card">
+<h2>Pubblica Aggiornamento APK</h2>
+<input class="input" id="verNum" placeholder="Numero versione (es. 17)" type="number" style="text-align:center;font-size:20px;font-weight:700">
+<input class="input" id="apkUrl" placeholder="URL diretto APK (es. https://.../app.apk)">
+<button class="btn" style="background:#e94560" onclick="publishUpdate()">Invia Aggiornamento a TUTTI</button>
+<div id="updateStatus" style="text-align:center;font-size:11px;color:#667788;margin-top:4px"></div>
+</div>
+
+<div class="card">
+<h2>Invia Playlist</h2>
+<input class="input" id="clientCode" placeholder="Codice cliente" style="text-transform:uppercase;text-align:center;font-size:16px;font-weight:700;letter-spacing:2px">
+<div class="tabs">
+<div class="tab active" id="tm" onclick="st('m3u')">M3U</div>
+<div class="tab" id="tx" onclick="st('xc')">Xtream Codes</div>
+<div class="tab" id="ts" onclick="st('st')">Stalker MAC</div>
+</div>
+<div id="pm"><input class="input" id="pn" placeholder="Nome"><input class="input" id="mu" placeholder="URL M3U"></div>
+<div id="px" style="display:none"><input class="input" id="xs" placeholder="Server"><div class="row"><input class="input" id="xu" placeholder="Username"><input class="input" id="xp" placeholder="Password"></div></div>
+<div id="ps" style="display:none"><input class="input" id="ss" placeholder="Server"><input class="input" id="sm" placeholder="MAC"></div>
+<button class="btn" onclick="send()">Invia al Cliente</button>
+<button class="btn" style="background:#30363d;margin-top:6px" onclick="sendToAll()">Invia a TUTTI</button>
+<button class="btn" style="background:#1a3a1a;margin-top:6px" onclick="sendToNew()">Invia ai nuovi (senza playlist)</button>
+</div>
+
+<div class="card" id="infoCard" style="display:none">
+<h2>Playlist Cliente <span id="infoCode"></span></h2>
+<div id="clientInfo"></div>
+</div>
+
+<div id="status" class="status"></div>
+</div>
+
+<script>
+var FB='https://iptv-player-eac9e-default-rtdb.europe-west1.firebasedatabase.app';
+var activated={};
+var donated={};
+function S(m,t){document.getElementById('status').textContent=m;document.getElementById('status').className='status show '+t}
+function st(t){
+document.getElementById('tm').classList.toggle('active',t==='m3u');
+document.getElementById('tx').classList.toggle('active',t==='xc');
+document.getElementById('ts').classList.toggle('active',t==='st');
+document.getElementById('pm').style.display=t==='m3u'?'block':'none';
+document.getElementById('px').style.display=t==='xc'?'block':'none';
+document.getElementById('ps').style.display=t==='st'?'block':'none';
+}
+
+async function loadActivated(){
+try{var r=await fetch(FB+'/activated.json');var d=await r.json();activated=d||{};}catch(e){activated={};}
+try{var r=await fetch(FB+'/donated.json');var d=await r.json();donated=d||{};}catch(e){donated={};}
+}
+
+
+
+async function activate(){
+var code=document.getElementById('actCode').value.trim().toUpperCase();
+if(!code||code.length<6){document.getElementById('actStatus').textContent='Inserisci codice';return}
+var period=parseInt(document.getElementById('actPeriod').value);
+if(period===-1){
+await fetch(FB+'/activated/'+code+'.json',{method:'DELETE'});
+document.getElementById('actStatus').innerHTML='Disattivato: '+code;
+}else{
+var expires=period===0?0:Date.now()+period*30*86400000;
+var data=period===0?'true':JSON.stringify({expires:expires});
+await fetch(FB+'/activated/'+code+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:data});
+var msg='Attivato: '+code+(period>0?' - scade '+new Date(expires).toLocaleDateString():(period===0?' - illimitato':''));
+document.getElementById('actStatus').textContent=msg;
+}
+loadClients();
+}
+
+async function activateAll(period){
+if(!confirm('Attivare TUTTI per '+period+' mesi?'))return;
+var r=await fetch(FB+'/clients.json');var d=await r.json();
+if(!d){return}
+var expires=Date.now()+period*30*86400000;
+var data=JSON.stringify({expires:expires});
+for(var code in d){await fetch(FB+'/activated/'+code+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:data});}
+S('Tutti attivati per '+period+' mesi!','ok');loadClients();
+}
+
+async function send(){
+var code=document.getElementById('clientCode').value.trim().toUpperCase();
+if(!code||code.length<6){S('Inserisci codice','err');return}
+var isXc=document.getElementById('tx').classList.contains('active'),isSt=document.getElementById('ts').classList.contains('active');
+var url,name;
+if(isSt){var s=document.getElementById('ss').value.trim(),m=document.getElementById('sm').value.trim();if(!s||!m){S('Server e MAC','err');return}url='stalker://'+btoa(s)+'/'+m.replace(/[:-]/g,'').toUpperCase();name='STB '+m.slice(-6)}
+else if(isXc){var s=document.getElementById('xs').value.trim(),u=document.getElementById('xu').value.trim(),p=document.getElementById('xp').value.trim();if(!s||!u||!p){S('Server,User,Pass','err');return}url='xc://'+btoa(s)+'/'+btoa(u)+'/'+btoa(p);name=u}
+else{url=document.getElementById('mu').value.trim();name=document.getElementById('pn').value.trim()||'Playlist';if(!url){S('URL M3U','err');return}}
+try{
+var cf={m3uUrl:url,playlistName:name,userAgent:'VLC/3.0.20 LibVLC/3.0.20',referer:'',origin:'',xForwardedFor:'',cookies:'',proxyHost:'',proxyPort:0,proxyType:'',proxyUser:'',proxyPass:'',dnsServer:'',epgUrl:'',customHeaders:{}};
+await fetch(FB+'/configs/'+code+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(cf)});
+S('Inviato a '+code,'ok');
+}catch(e){S('Errore: '+e.message,'err')}
+}
+
+async function sendToNew(){
+var isXc=document.getElementById('tx').classList.contains('active'),isSt=document.getElementById('ts').classList.contains('active');
+var url,name;
+if(isSt){var s=document.getElementById('ss').value.trim(),m=document.getElementById('sm').value.trim();if(!s||!m){S('Server e MAC','err');return}url='stalker://'+btoa(s)+'/'+m.replace(/[:-]/g,'').toUpperCase();name='STB '+m.slice(-6)}
+else if(isXc){var s=document.getElementById('xs').value.trim(),u=document.getElementById('xu').value.trim(),p=document.getElementById('xp').value.trim();if(!s||!u||!p){S('Server,User,Pass','err');return}url='xc://'+btoa(s)+'/'+btoa(u)+'/'+btoa(p);name=u}
+else{url=document.getElementById('mu').value.trim();name=document.getElementById('pn').value.trim()||'Playlist';if(!url){S('URL M3U','err');return}}
+if(!confirm('Inviare solo ai nuovi client (senza playlist)?'))return;
+var r=await fetch(FB+'/clients.json');var d=await r.json();
+if(!d||Object.keys(d).length===0){S('Nessun cliente','err');return}
+var cf={m3uUrl:url,playlistName:name,userAgent:'VLC/3.0.20 LibVLC/3.0.20',referer:'',origin:'',xForwardedFor:'',cookies:'',proxyHost:'',proxyPort:0,proxyType:'',proxyUser:'',proxyPass:'',dnsServer:'',epgUrl:'',customHeaders:{}};
+var done=0;var skip=0;
+for(var code in d){
+try{
+var r2=await fetch(FB+'/configs/'+code+'.json');var d2=await r2.json();
+if(!d2||!d2.m3uUrl){
+await fetch(FB+'/configs/'+code+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(cf)});done++;
+}else{skip++;}
+}catch(e){skip++}
+}
+S('Inviato a '+done+' nuovi client ('+skip+' avevano già playlist)','ok');loadClients();
+}
+async function sendToAll(){
+var isXc=document.getElementById('tx').classList.contains('active'),isSt=document.getElementById('ts').classList.contains('active');
+var url,name;
+if(isSt){var s=document.getElementById('ss').value.trim(),m=document.getElementById('sm').value.trim();if(!s||!m){S('Server e MAC','err');return}url='stalker://'+btoa(s)+'/'+m.replace(/[:-]/g,'').toUpperCase();name='STB '+m.slice(-6)}
+else if(isXc){var s=document.getElementById('xs').value.trim(),u=document.getElementById('xu').value.trim(),p=document.getElementById('xp').value.trim();if(!s||!u||!p){S('Server,User,Pass','err');return}url='xc://'+btoa(s)+'/'+btoa(u)+'/'+btoa(p);name=u}
+else{url=document.getElementById('mu').value.trim();name=document.getElementById('pn').value.trim()||'Playlist';if(!url){S('URL M3U','err');return}}
+if(!confirm('Inviare a TUTTI?'))return;
+var r=await fetch(FB+'/clients.json');var d=await r.json();
+if(!d||Object.keys(d).length===0){S('Nessun cliente','err');return}
+var codes=Object.keys(d);
+var cf={m3uUrl:url,playlistName:name,userAgent:'VLC/3.0.20 LibVLC/3.0.20',referer:'',origin:'',xForwardedFor:'',cookies:'',proxyHost:'',proxyPort:0,proxyType:'',proxyUser:'',proxyPass:'',dnsServer:'',epgUrl:'',customHeaders:{}};
+var done=0;for(var code of codes){try{await fetch(FB+'/configs/'+code+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(cf)});done++}catch(e){}}
+S('Inviato a '+done+'/'+codes.length,'ok');loadClients();
+}
+
+async function viewClient(code){
+document.getElementById('clientCode').value=code;
+var info=document.getElementById('clientInfo');document.getElementById('infoCode').textContent=code;
+try{
+var r1=await fetch(FB+'/configs/'+code+'.json');var d1=await r1.json();
+var r2=await fetch(FB+'/clients/'+code+'.json');var d2=await r2.json();
+var r3=await fetch(FB+'/donated/'+code+'.json');var d3=await r3.json();
+var pl=d2&&d2.playlists?d2.playlists:[];
+var donHtml='';
+if(d3&&d3.donated===true){donHtml='<div style="font-size:12px;color:#ffd700;margin-bottom:6px"><b>❤️ Donato</b>'+(d3.txid?' - TXID: <span style="color:#8899aa;font-size:10px">'+d3.txid+'</span>':'')+'</div>';}
+var html=donHtml+'<div style="font-size:12px;color:#8899aa;margin-bottom:6px"><b>Cloud:</b> '+(d1&&d1.m3uUrl?'<span style="color:#4caf50">Presente</span>':'<span style="color:#667788">Vuoto</span>')+'</div>';
+html+='<div style="font-size:12px;color:#8899aa;margin-bottom:6px"><b>Dispositivo ('+pl.length+' playlist):</b></div>';
+if(pl.length>0){pl.forEach(function(p,i){html+='<div class="cli" style="padding:6px 8px"><div><div style="color:#fff;font-size:12px">'+p.name+'</div><div style="color:#667788;font-size:10px;word-break:break-all">'+p.url+'</div></div><div><button class="btn-sm" onclick="copyUrl(this)" data-url="'+p.url.replace(/"/g,'&quot;')+'">Copia</button> <button class="btn-sm del" onclick="delPlaylist(\''+code+'\','+i+')">X</button></div></div>';});}
+else{html+='<div style="color:#667788;font-size:11px">Nessuna</div>';}
+html+='<button class="btn-sm del" style="margin-top:8px" onclick="delClient(\''+code+'\')">Elimina playlist cloud</button>';
+info.innerHTML=html;document.getElementById('infoCard').style.display='block';
+}catch(e){info.innerHTML='Errore: '+e.message}
+}
+
+async function confirmDonation(code){
+if(!confirm('Confermare donazione per '+code+'?'))return;
+await fetch(FB+'/donated/'+code+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({donated:true})});
+S('Donazione confermata per '+code,'ok');loadClients();
+}
+async function delClient(code){if(!confirm('Eliminare '+code+'?'))return;await fetch(FB+'/configs/'+code+'.json',{method:'DELETE'});S('Eliminato '+code,'ok');loadClients();}
+async function delPlaylist(code,index){if(!confirm('Eliminare?'))return;var r=await fetch(FB+'/clients/'+code+'.json');var d=await r.json();if(!d||!d.playlists)return;d.playlists.splice(index,1);await fetch(FB+'/clients/'+code+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(d)});loadClients();viewClient(code);}
+function copyUrl(btn){var url=btn.getAttribute('data-url');navigator.clipboard.writeText(url).then(function(){S('Copiato!','ok')}).catch(function(){S('Errore copia','err')});}
+
+var donActive=localStorage.getItem('donActive')==='true';
+var btcAddr='BC1QWGLY87FWFWWXNTWYDJSRFMQM9R3CPUK5SX30PJ';
+function toggleDonation(){
+donActive=!donActive;
+localStorage.setItem('donActive',donActive);
+var btn=document.getElementById('donBtn');
+btn.textContent=donActive?'▶ Richiedi ON':'⏹ Richiedi OFF';
+btn.style.background=donActive?'#1b5e20':'#333';
+btn.style.color=donActive?'#a5d6a7':'#8899aa';
+var data;
+if(donActive){
+var days=parseInt(document.getElementById('donPeriod').value);
+var expires=days>0?Date.now()+days*86400000:0;
+data=JSON.stringify({active:true,btc:btcAddr,expires:expires,days:days});
+}else{
+data=JSON.stringify({active:false});
+}
+fetch(FB+'/messages/donation.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:data});
+document.getElementById('donStatus').textContent=donActive?'Richiesta attiva'+(days>0?' - '+days+' giorni':' senza scadenza'):'Disattivo';
+}
+var autoActive=localStorage.getItem('autoActive')==='true';
+var showAll=false;
+var allClients=[];
+function toggleAuto(){
+autoActive=!autoActive;
+localStorage.setItem('autoActive',autoActive);
+var btn=document.getElementById('autoBtn');
+btn.textContent=autoActive?'▶ Auto ON':'⏹ Auto OFF';
+btn.style.background=autoActive?'#1b5e20':'#333';
+btn.style.color=autoActive?'#a5d6a7':'#8899aa';
+loadClients();
+}
+async function publishUpdate(){
+var ver=parseInt(document.getElementById('verNum').value);
+var url=document.getElementById('apkUrl').value.trim();
+if(!ver||!url){S('Inserisci versione e URL APK','err');return}
+if(!confirm('Pubblicare versione '+ver+' a TUTTI i client?'))return;
+try{
+var data=JSON.stringify({version:ver,url:url});
+await fetch(FB+'/version.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:data});
+document.getElementById('updateStatus').textContent='✔ Versione '+ver+' pubblicata! I client riceveranno il messaggio.';
+S('Aggiornamento pubblicato!','ok');
+}catch(e){S('Errore: '+e.message,'err')}
+}
+function toggleShowAll(){
+showAll=!showAll;
+document.getElementById('showMoreBtn').textContent=showAll?'Mostra meno':'Mostra tutti';
+renderClients();
+}
+function renderClients(){
+var items=[];
+var d=allClients;
+document.getElementById('clientCount').textContent='- Totale: '+d.length;
+var limit=showAll?d.length:Math.min(20,d.length);
+for(var i=0;i<limit;i++){
+var code=d[i].code,pl=d[i].pl,ts=d[i].ts;
+var act=activated[code];
+var actText='NON ATTIVO';var actColor='err';
+if(act===true||(act&&act!=='true')){actText='ATTIVO';actColor='ok';}
+if(act&&typeof act==='object'&&act.expires){var exp=new Date(act.expires);if(Date.now()>act.expires){actText='SCADUTO';actColor='del'}else{actText='Attivo fino '+exp.toLocaleDateString();actColor='ok';}}
+    var don=donated[code];
+    var donBadge='';
+    if(don===true||(don&&don.donated===true)){donBadge=' <span style="background:#3a3a00;color:#ffd700;padding:2px 5px;border-radius:3px;font-size:9px">❤️ DONATO</span>';}
+    else if(don&&don.pending===true){donBadge=' <span style="background:#1a3a5e;color:#64b5f6;padding:2px 5px;border-radius:3px;font-size:9px">⏳ TXID: '+(don.txid?don.txid.substring(0,8)+'...':'in attesa')+'</span> <button class="btn-sm ok" style="font-size:8px;padding:1px 4px" onclick="confirmDonation(\''+code+'\')">Conferma</button>';}
+    var dt=ts>0?new Date(ts).toLocaleString():'Mai';
+    items.push('<div class="cli"><div><div class="cli-code">'+code+donBadge+' <span class="act-badge '+(actColor==='ok'?'act-yes':actColor==='del'?'act-no':'')+'" style="background:'+(actColor==='ok'?'#1b5e20':actColor==='del'?'#b71c1c':'#555')+';color:'+(actColor==='ok'?'#a5d6a7':actColor==='del'?'#ef9a9a':'#8899aa')+'">'+actText+'</span></div><div class="cli-date">'+dt+' ('+pl.length+' PL)</div></div><div><button class="btn-sm" onclick="viewClient(\''+code+'\')">Vedi</button><button class="btn-sm del" onclick="delClient(\''+code+'\')">Elimina</button></div></div>');
+}
+document.getElementById('clientsList').innerHTML=items.join('');
+var wrap=document.getElementById('showMoreWrap');
+if(d.length>20){wrap.style.display='block';document.getElementById('showMoreBtn').textContent=showAll?'Mostra meno ('+d.length+')':'Mostra tutti ('+d.length+')';}else{wrap.style.display='none';}
+}
+async function loadClients(){
+await loadActivated();
+var list=document.getElementById('clientsList');
+try{
+var r=await fetch(FB+'/clients.json');var d=await r.json();
+if(!d||Object.keys(d).length===0){list.innerHTML='Nessun cliente';return}
+allClients=[];
+for(var code in d){
+allClients.push({code:code,pl:d[code].playlists||[],ts:parseInt(d[code].lastSeen)||0});
+}
+allClients.sort(function(a,b){return b.ts-a.ts});
+if(autoActive){
+var period=parseInt(document.getElementById('autoPeriod').value);
+var count=0;
+for(var c of allClients){
+if(!activated[c.code]||activated[c.code]===false||(activated[c.code]&&typeof activated[c.code]==='object'&&activated[c.code].expires&&Date.now()>activated[c.code].expires)){
+var p=period;
+var dd=donated[c.code];
+var isDonor=dd===true||(dd&&dd.donated===true);
+if(!isDonor)p=Math.min(p,3);
+var expires=Date.now()+p*30*86400000;
+await fetch(FB+'/activated/'+c.code+'.json',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({expires:expires})});
+count++;
+}
+}
+document.getElementById('autoCount').textContent='Attivati: '+count;
+if(count>0)await loadActivated();
+}
+renderClients();
+}catch(e){list.innerHTML='Errore: '+e.message}
+}
+
+// Inizializza stati
+(function(){
+var abtn=document.getElementById('autoBtn');
+if(autoActive){abtn.textContent='▶ Auto ON';abtn.style.background='#1b5e20';abtn.style.color='#a5d6a7';}
+var dbtn=document.getElementById('donBtn');
+if(donActive){dbtn.textContent='▶ Richiedi ON';dbtn.style.background='#1b5e20';dbtn.style.color='#a5d6a7';document.getElementById('donStatus').textContent='Richiesta attiva - nuovi utenti vedranno il popup';}
+})();
+loadClients();
+</script>
+</body>
+</html>
