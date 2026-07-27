@@ -242,58 +242,35 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun downloadAndInstallApk(apkUrl: String) {
-        try {
-            Toast.makeText(this, "Download avviato...", Toast.LENGTH_LONG).show()
-            val dm = getSystemService(DOWNLOAD_SERVICE) as? android.app.DownloadManager
-            if (dm == null) { Toast.makeText(this, "DownloadManager non disponibile", Toast.LENGTH_LONG).show(); return }
-            val fileName = "IPTVPlayer-v${VERSION}.apk"
-            val request = android.app.DownloadManager.Request(android.net.Uri.parse(apkUrl))
-                .setTitle("IPTV Player v${VERSION}")
-                .setDescription("Download in corso...")
-                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                .setDestinationInExternalFilesDir(this, null, fileName)
-                .setMimeType("application/vnd.android.package-archive")
-                .setAllowedOverMetered(true)
-                .setAllowedOverRoaming(true)
-            val downloadId = dm.enqueue(request)
-            val filter = android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-            val receiver = object : android.content.BroadcastReceiver() {
-                override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
-                    val id = intent.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1)
-                    if (id == downloadId) {
-                        try {
-                            val cursor = dm.query(android.app.DownloadManager.Query().setFilterById(downloadId))
-                            if (cursor.moveToFirst()) {
-                                val status = cursor.getInt(cursor.getColumnIndex(android.app.DownloadManager.COLUMN_STATUS))
-                                if (status == android.app.DownloadManager.STATUS_SUCCESSFUL) {
-                                    val uri = dm.getUriForDownloadedFile(downloadId)
-                                    if (uri != null) {
-                                        val installIntent = android.content.Intent(android.content.Intent.ACTION_VIEW)
-                                        installIntent.setDataAndType(uri, "application/vnd.android.package-archive")
-                                        installIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                                        installIntent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                        startActivity(installIntent)
-                                    }
-                                } else {
-                                    val reason = cursor.getInt(cursor.getColumnIndex(android.app.DownloadManager.COLUMN_REASON))
-                                    Toast.makeText(this@MainActivity, "Download fallito (errore $reason)", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                            cursor.close()
-                        } catch (e: Exception) {
-                            Toast.makeText(this@MainActivity, "Errore: ${e.message}", Toast.LENGTH_LONG).show()
-                        }
-                        try { unregisterReceiver(this) } catch (_: Exception) {}
-                    }
+        Toast.makeText(this, "Download avviato...", Toast.LENGTH_LONG).show()
+        executor.execute {
+            try {
+                val url = URL(apkUrl)
+                val conn = url.openConnection() as java.net.HttpURLConnection
+                conn.connectTimeout = 10000; conn.readTimeout = 30000
+                conn.setRequestProperty("User-Agent", "IPTVPlayer/${VERSION}")
+                conn.connect()
+                if (conn.responseCode != 200) {
+                    mainHandler.post { Toast.makeText(this@MainActivity, "Errore download: HTTP ${conn.responseCode}", Toast.LENGTH_LONG).show() }
+                    return@execute
                 }
+                val input = conn.inputStream
+                val fileName = "IPTVPlayer-v${VERSION}.apk"
+                val file = java.io.File(cacheDir, fileName)
+                val output = java.io.FileOutputStream(file)
+                input.copyTo(output, bufferSize = 8192)
+                output.close(); input.close(); conn.disconnect()
+                mainHandler.post {
+                    val uri = androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "${packageName}.fileprovider", file)
+                    val installIntent = android.content.Intent(android.content.Intent.ACTION_VIEW)
+                    installIntent.setDataAndType(uri, "application/vnd.android.package-archive")
+                    installIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                    installIntent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    startActivity(installIntent)
+                }
+            } catch (e: Exception) {
+                mainHandler.post { Toast.makeText(this@MainActivity, "Errore download: ${e.message}", Toast.LENGTH_LONG).show() }
             }
-            if (android.os.Build.VERSION.SDK_INT >= 33) {
-                registerReceiver(receiver, filter, android.content.Context.RECEIVER_EXPORTED)
-            } else {
-                registerReceiver(receiver, filter)
-            }
-        } catch (e: Exception) {
-            Toast.makeText(this, "Errore download: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 
