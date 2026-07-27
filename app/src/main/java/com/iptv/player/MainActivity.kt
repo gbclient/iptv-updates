@@ -243,10 +243,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun downloadAndInstallApk(apkUrl: String) {
         try {
-            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(apkUrl))
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
-            Toast.makeText(this, "Apertura browser...", Toast.LENGTH_LONG).show()
+            Toast.makeText(this, "Download avviato...", Toast.LENGTH_LONG).show()
+            val fileName = "IPTVPlayer-v${VERSION}.apk"
+            val dm = getSystemService(DOWNLOAD_SERVICE) as? android.app.DownloadManager
+            if (dm == null) { Toast.makeText(this, "DownloadManager non disponibile", Toast.LENGTH_LONG).show(); return }
+            val request = android.app.DownloadManager.Request(android.net.Uri.parse(apkUrl))
+                .setTitle("IPTV Player v${VERSION}")
+                .setDescription("Download...")
+                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalFilesDir(this, null, fileName)
+                .setAllowedOverMetered(true).setAllowedOverRoaming(true)
+            dm.enqueue(request)
+            Toast.makeText(this, "Notifica download. Cliccala per installare.", Toast.LENGTH_LONG).show()
         } catch (e: Exception) {
             Toast.makeText(this, "Errore: ${e.message}", Toast.LENGTH_LONG).show()
         }
