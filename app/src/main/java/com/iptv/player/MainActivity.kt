@@ -242,48 +242,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun downloadAndInstallApk(apkUrl: String) {
-        val progress = android.app.ProgressDialog(this).apply {
-            setTitle("Download v${VERSION}")
-            setMessage("Scaricamento APK in corso...")
-            setCancelable(false)
-            show()
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(apkUrl))
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+        } catch (e: Exception) {
+            android.app.AlertDialog.Builder(this)
+                .setTitle("Scarica manualmente")
+                .setMessage("Usa il browser Silk o Downloader per aprire:\n\n$apkUrl")
+                .setPositiveButton("OK", null)
+                .show()
         }
-        Thread {
-            try {
-                val client = okhttp3.OkHttpClient.Builder()
-                    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                    .readTimeout(120, java.util.concurrent.TimeUnit.SECONDS)
-                    .followRedirects(true).build()
-                val resp = client.newCall(okhttp3.Request.Builder().url(apkUrl).build()).execute()
-                if (!resp.isSuccessful) {
-                    mainHandler.post { progress.dismiss(); Toast.makeText(this@MainActivity, "Errore HTTP ${resp.code}", Toast.LENGTH_LONG).show() }
-                    resp.close(); return@Thread
-                }
-                val file = java.io.File(cacheDir, "IPTVPlayer-v${VERSION}.apk")
-                file.delete()
-                val output = java.io.FileOutputStream(file)
-                resp.body!!.byteStream().use { input -> output.use { out -> input.copyTo(out, 8192) } }
-                resp.close()
-                mainHandler.post {
-                    progress.dismiss()
-                    val uri = androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "${packageName}.fileprovider", file)
-                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
-                    intent.setDataAndType(uri, "application/vnd.android.package-archive")
-                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    try { startActivity(intent) }
-                    catch (e: Exception) {
-                        android.app.AlertDialog.Builder(this@MainActivity)
-                            .setTitle("Scaricato!")
-                            .setMessage("APK salvato nella memoria interna.\n\nApri un file manager (es. Downloader) e installa: ${file.absolutePath}")
-                            .setPositiveButton("OK", null)
-                            .show()
-                    }
-                }
-            } catch (e: Exception) {
-                mainHandler.post { progress.dismiss(); Toast.makeText(this@MainActivity, "Download fallito: ${e.message}", Toast.LENGTH_LONG).show() }
-            }
-        }.start()
     }
 
     private fun checkBroadcast() {
