@@ -11,8 +11,17 @@ android {
         applicationId = "com.iptv.player"
         minSdk = 22
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 19
+        versionName = "19.0"
+    }
+
+    signingConfigs {
+        create("release") {
+            storeFile = file("keystore.jks")
+            storePassword = "iptvplayer17"
+            keyAlias = "iptvplayer"
+            keyPassword = "iptvplayer17"
+        }
     }
 
     buildTypes {
@@ -22,6 +31,7 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 

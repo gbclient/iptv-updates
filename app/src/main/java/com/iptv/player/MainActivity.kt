@@ -33,7 +33,7 @@ import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
-    companion object { const val VERSION = 18 }
+    companion object { const val VERSION = 19 }
 
     enum class ContentType { LIVE, VOD, SERIES }
 
