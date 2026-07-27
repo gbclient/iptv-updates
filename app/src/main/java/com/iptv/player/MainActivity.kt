@@ -242,42 +242,14 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun downloadAndInstallApk(apkUrl: String) {
-        Toast.makeText(this, "Download...", Toast.LENGTH_LONG).show()
-        Thread {
-            try {
-                val client = okhttp3.OkHttpClient.Builder()
-                    .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-                    .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
-                    .followRedirects(true).followSslRedirects(true)
-                    .build()
-                val request = okhttp3.Request.Builder().url(apkUrl)
-                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14; Fire TV)")
-                    .build()
-                val response = client.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    mainHandler.post { Toast.makeText(this@MainActivity, "Errore HTTP ${response.code}", Toast.LENGTH_LONG).show() }
-                    response.close(); return@Thread
-                }
-                val body = response.body ?: run { mainHandler.post { Toast.makeText(this@MainActivity, "Corpo vuoto", Toast.LENGTH_LONG).show() }; response.close(); return@Thread }
-                val file = java.io.File(cacheDir, "IPTVPlayer-v${VERSION}.apk")
-                file.delete()
-                val output = java.io.FileOutputStream(file)
-                body.byteStream().use { input -> output.use { output -> input.copyTo(output, bufferSize = 8192) } }
-                response.close()
-                mainHandler.post {
-                    val uri = androidx.core.content.FileProvider.getUriForFile(this@MainActivity, "${packageName}.fileprovider", file)
-                    val intent = android.content.Intent(android.content.Intent.ACTION_VIEW)
-                    intent.setDataAndType(uri, "application/vnd.android.package-archive")
-                    intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    intent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                    try { startActivity(intent) } catch (e: Exception) {
-                        Toast.makeText(this@MainActivity, "Installa da: Impostazioni > App > IPTV Player > Installa app sconosciute", Toast.LENGTH_LONG).show()
-                    }
-                }
-            } catch (e: Exception) {
-                mainHandler.post { Toast.makeText(this@MainActivity, "Download fallito: ${e.message}", Toast.LENGTH_LONG).show() }
-            }
-        }.start()
+        try {
+            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(apkUrl))
+            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(intent)
+            Toast.makeText(this, "Apertura browser...", Toast.LENGTH_LONG).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, "Errore: ${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     private fun checkBroadcast() {
