@@ -8,6 +8,7 @@ import com.google.gson.stream.JsonReader
 import com.google.gson.stream.JsonToken
 import com.iptv.player.model.Channel
 import okhttp3.*
+import java.net.URL
 import java.net.URLDecoder
 import java.net.URLEncoder
 import java.security.MessageDigest
@@ -198,14 +199,35 @@ object StalkerApi {
 
     private var lastError: String? = null
 
+    private fun buildReq(url: String, ua: String): Request {
+        val host = try { URL(url).host } catch (_: Exception) { "" }
+        return Request.Builder().url(url)
+            .header("User-Agent", ua)
+            .header("Accept", "*/*")
+            .header("Accept-Language", "en-US,en;q=0.9")
+            .header("Accept-Encoding", "gzip, deflate")
+            .header("Referer", "http://$host/c/")
+            .header("X-Requested-With", "XMLHttpRequest")
+            .header("Connection", "keep-alive")
+            .build()
+    }
+
+    private fun isCloudflare(body: String): Boolean {
+        return body.contains("cf-browser-verification", ignoreCase = true) ||
+               body.contains("__cf_chl_opt", ignoreCase = true) ||
+               body.contains("Just a moment", ignoreCase = true) ||
+               body.contains("checking your browser", ignoreCase = true) ||
+               body.contains("Cloudflare", ignoreCase = true) && body.contains("challenge", ignoreCase = true)
+    }
+
     private fun fetchChannelsStreaming(url: String): List<RawChannel> {
         return try {
-            val rb = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C)").header("Accept", "*/*")
-            val resp = client.newCall(rb.build()).execute()
+            val resp = client.newCall(buildReq(url, "Mozilla/5.0 (QtEmbedded; U; Linux; C)")).execute()
             if (resp.code != 200) { lastError = "HTTP ${resp.code}"; return emptyList() }
             val body = resp.body ?: run { resp.close(); return emptyList() }
             val raw = body.string()
             resp.close()
+            if (isCloudflare(raw)) { lastError = "Cloudflare blocca il server - prova VPN (Paesi Bassi/Germania)"; return emptyList() }
 
             val json = try { JsonParser.parseString(raw) } catch (_: Exception) { return emptyList() }
 
@@ -237,8 +259,7 @@ object StalkerApi {
     private fun apiGet(url: String, ua: String = "Mozilla/5.0 (QtEmbedded; U; Linux; C)"): ApiResult? {
         lastError = null
         return try {
-            val rb = Request.Builder().url(url).header("User-Agent", ua).header("Accept", "*/*")
-            val resp = client.newCall(rb.build()).execute()
+            val resp = client.newCall(buildReq(url, ua)).execute()
             val code = resp.code
             val body = resp.body?.string()
             android.util.Log.i("STALKER", "HTTP $code → ${body?.take(500)}")
@@ -248,6 +269,11 @@ object StalkerApi {
                     512 -> "HTTP 512 - MAC/handshake rifiutato"
                     else -> "HTTP $code vuoto"
                 }
+                return null
+            }
+            if (isCloudflare(body)) {
+                lastError = "Cloudflare blocca il server - prova VPN (Paesi Bassi/Germania)"
+                android.util.Log.w("STALKER", "Cloudflare detected")
                 return null
             }
             if (code != 200) {
