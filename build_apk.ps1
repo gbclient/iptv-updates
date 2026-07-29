@@ -192,8 +192,8 @@ try {
 
     $gradlew = Join-Path $ProjectRoot "gradlew.bat"
 
-    Write-Host "    Compilando APK (assembleRelease)..."
-    & $gradlew assembleRelease --no-daemon --stacktrace
+    Write-Host "    Compilando APK (assembleDebug)..."
+    & $gradlew assembleDebug --no-daemon --stacktrace
 
     if ($LASTEXITCODE -eq 0) {
         Write-Host ""

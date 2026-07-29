@@ -5,35 +5,35 @@ plugins {
 
 android {
     namespace = "com.iptv.player"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.iptv.player"
         minSdk = 22
-        targetSdk = 34
-        versionCode = 19
-        versionName = "19.0"
+        targetSdk = 35
+        versionCode = 50
+        versionName = "50.0"
     }
 
     signingConfigs {
         create("release") {
-            storeFile = file("keystore.jks")
-            storePassword = "iptvplayer17"
+            storeFile = file("release.keystore")
+            storePassword = "iptv2026"
             keyAlias = "iptvplayer"
-            keyPassword = "iptvplayer17"
+            keyPassword = "iptv2026"
         }
     }
 
     buildTypes {
-        debug {
-            signingConfig = signingConfigs.getByName("release")
-        }
         release {
             isMinifyEnabled = true
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+        }
+        debug {
             signingConfig = signingConfigs.getByName("release")
         }
     }

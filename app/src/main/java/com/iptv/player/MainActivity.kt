@@ -33,7 +33,7 @@ import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
 
-    companion object { const val VERSION = 19 }
+    companion object { const val VERSION = 50 }
 
     enum class ContentType { LIVE, VOD, SERIES }
 
@@ -53,6 +53,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var splashOverlay: LinearLayout
     private lateinit var themeBtn: TextView
     private lateinit var searchBtn: TextView
+    private lateinit var infoBtn: TextView
+    private lateinit var langBtn: TextView
     private lateinit var donateBtn: android.widget.Button
     private lateinit var rootLayout: androidx.constraintlayout.widget.ConstraintLayout
 
@@ -94,12 +96,24 @@ class MainActivity : AppCompatActivity() {
         splashOverlay = findViewById(R.id.splashOverlay)
         themeBtn = findViewById(R.id.themeBtn)
         searchBtn = findViewById(R.id.searchBtn)
+        infoBtn = findViewById(R.id.infoBtn)
+        langBtn = findViewById(R.id.langBtn)
         donateBtn = findViewById(R.id.donateBtn)
         rootLayout = findViewById(R.id.rootLayout)
 
         applyTheme()
+        applyLanguage()
 
         searchBtn.setOnClickListener { showSearchDialog() }
+        infoBtn.setOnClickListener { showInfoDialog() }
+        langBtn.setOnClickListener {
+            val cur = Language.get(this)
+            val next = when (cur) { "it" -> "en"; "en" -> "de"; "de" -> "it"; else -> "en" }
+            Language.set(this, next)
+            applyLanguage()
+            val msg = when (next) { "en" -> "Language: English"; "de" -> "Sprache: Deutsch"; else -> "Lingua: Italiano" }
+            Toast.makeText(this, msg, Toast.LENGTH_SHORT).show()
+        }
         themeBtn.setOnClickListener { showThemeDialog() }
 
         // Splash screen: mostra e nascondi dopo 1.5s
@@ -175,7 +189,7 @@ class MainActivity : AppCompatActivity() {
                             .setPositiveButton("Copia e conferma") { _, _ ->
                                 val clip = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                                 clip.setPrimaryClip(android.content.ClipData.newPlainText("BTC", btc))
-                                Toast.makeText(this@MainActivity, "Indirizzo copiato!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(this@MainActivity, Language.t(this@MainActivity, "btc_copied"), Toast.LENGTH_SHORT).show()
                                 // Chiedi TXID
                                 val txInput = android.widget.EditText(this@MainActivity).apply {
                                     hint = "Incolla il TXID della transazione"
@@ -227,12 +241,12 @@ class MainActivity : AppCompatActivity() {
                     if (latestVer > VERSION && apkUrl.isNotBlank()) {
                         mainHandler.post {
                             AlertDialog.Builder(this@MainActivity)
-                                .setTitle("Aggiornamento disponibile!")
-                                .setMessage("Nuova versione $latestVer disponibile. Scaricarla?")
-                                .setPositiveButton("Scarica") { _, _ ->
+                                .setTitle(Language.t(this@MainActivity, "update_title") + latestVer)
+                                .setMessage(Language.t(this@MainActivity, "update_msg"))
+                                .setPositiveButton(Language.t(this@MainActivity, "download")) { _, _ ->
                                     downloadAndInstallApk(apkUrl)
                                 }
-                                .setNegativeButton("Dopo", null)
+                                .setNegativeButton(Language.t(this@MainActivity, "later"), null)
                                 .show()
                         }
                     }
@@ -243,15 +257,57 @@ class MainActivity : AppCompatActivity() {
 
     private fun downloadAndInstallApk(apkUrl: String) {
         try {
-            val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(apkUrl))
-            intent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            startActivity(intent)
+            Toast.makeText(this, Language.t(this, "downloading"), Toast.LENGTH_LONG).show()
+            val dm = getSystemService(DOWNLOAD_SERVICE) as? android.app.DownloadManager
+            if (dm == null) { Toast.makeText(this, Language.t(this, "dm_unavailable"), Toast.LENGTH_LONG).show(); return }
+            val fileName = "IPTVPlayer-v${VERSION}.apk"
+            val request = android.app.DownloadManager.Request(android.net.Uri.parse(apkUrl))
+                .setTitle("IPTV Player v${VERSION}")
+                .setDescription("Download in corso...")
+                .setNotificationVisibility(android.app.DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                .setDestinationInExternalFilesDir(this, null, fileName)
+                .setMimeType("application/vnd.android.package-archive")
+                .setAllowedOverMetered(true)
+                .setAllowedOverRoaming(true)
+            val downloadId = dm.enqueue(request)
+            val filter = android.content.IntentFilter(android.app.DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+            val receiver = object : android.content.BroadcastReceiver() {
+                override fun onReceive(context: android.content.Context, intent: android.content.Intent) {
+                    val id = intent.getLongExtra(android.app.DownloadManager.EXTRA_DOWNLOAD_ID, -1)
+                    if (id == downloadId) {
+                        try {
+                            val cursor = dm.query(android.app.DownloadManager.Query().setFilterById(downloadId))
+                            if (cursor.moveToFirst()) {
+                                val status = cursor.getInt(cursor.getColumnIndex(android.app.DownloadManager.COLUMN_STATUS))
+                                if (status == android.app.DownloadManager.STATUS_SUCCESSFUL) {
+                                    val uri = dm.getUriForDownloadedFile(downloadId)
+                                    if (uri != null) {
+                                        val installIntent = android.content.Intent(android.content.Intent.ACTION_VIEW)
+                                        installIntent.setDataAndType(uri, "application/vnd.android.package-archive")
+                                        installIntent.addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                                        installIntent.addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        startActivity(installIntent)
+                                    }
+                                } else {
+                                    val reason = cursor.getInt(cursor.getColumnIndex(android.app.DownloadManager.COLUMN_REASON))
+                                    Toast.makeText(this@MainActivity, Language.t(this@MainActivity, "download_fail") + reason + ")", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                            cursor.close()
+                        } catch (e: Exception) {
+                            Toast.makeText(this@MainActivity, "Errore: ${e.message}", Toast.LENGTH_LONG).show()
+                        }
+                        try { unregisterReceiver(this) } catch (_: Exception) {}
+                    }
+                }
+            }
+            if (android.os.Build.VERSION.SDK_INT >= 33) {
+                registerReceiver(receiver, filter, android.content.Context.RECEIVER_EXPORTED)
+            } else {
+                registerReceiver(receiver, filter)
+            }
         } catch (e: Exception) {
-            android.app.AlertDialog.Builder(this)
-                .setTitle("Scarica manualmente")
-                .setMessage("Usa il browser Silk o Downloader per aprire:\n\n$apkUrl")
-                .setPositiveButton("OK", null)
-                .show()
+            Toast.makeText(this, Language.t(this, "download_fail") + e.message + ")", Toast.LENGTH_LONG).show()
         }
     }
 
@@ -567,7 +623,14 @@ class MainActivity : AppCompatActivity() {
         themeBtn.visibility = View.VISIBLE
         playlistBtn.visibility = View.VISIBLE
         searchBtn.visibility = View.VISIBLE
+        infoBtn.visibility = View.VISIBLE
+        langBtn.visibility = View.VISIBLE
+        langBtn.text = when (Language.get(this)) { "en" -> "ENG"; "de" -> "DE"; else -> "ITA" }
         addBtn.visibility = View.VISIBLE
+    }
+
+    private fun applyLanguage() {
+        langBtn.text = when (Language.get(this)) { "en" -> "ENG"; "de" -> "DE"; else -> "ITA" }
     }
 
     private fun applyTheme() {
@@ -644,18 +707,22 @@ class MainActivity : AppCompatActivity() {
     private fun loadChannels(m3uUrl: String) {
         progressBar.visibility = View.VISIBLE
         statusText.visibility = View.VISIBLE
-        statusText.text = "Caricamento canali..."
+        statusText.text = Language.t(this, "playlist_loading")
         emptyText.visibility = View.GONE
         recyclerView.visibility = View.GONE
 
         executor.execute {
             try {
             if (m3uUrl.startsWith("stalker://")) {
-                val parts = m3uUrl.removePrefix("stalker://").split("/")
-                if (parts.size >= 2) {
+                val path = m3uUrl.removePrefix("stalker://")
+                val lastSlash = path.lastIndexOf('/')
+                if (lastSlash > 0) {
                     try {
-                        val server = String(Base64.decode(parts[0], Base64.DEFAULT))
-                        val mac = parts[1]
+                        val b64 = path.substring(0, lastSlash)
+                        val flags = if (b64.indexOf('/') >= 0 || b64.indexOf('+') >= 0) Base64.DEFAULT else Base64.URL_SAFE
+                        val server = String(Base64.decode(b64, flags))
+                        val mac = path.substring(lastSlash + 1)
+                        android.util.Log.i("STALKER", "Server: $server | MAC: $mac | B64: $b64")
                         val config = StalkerApi.StalkerConfig(server, mac)
                         val result = StalkerApi.loadChannels(config, this@MainActivity)
                         mainHandler.post {
@@ -687,9 +754,13 @@ class MainActivity : AppCompatActivity() {
                 val parts = m3uUrl.removePrefix("xc://").split("/")
                 if (parts.size >= 3) {
                     try {
-                        val server = String(Base64.decode(parts[0], Base64.DEFAULT))
-                        val user = String(Base64.decode(parts[1], Base64.DEFAULT))
-                        val pass = String(Base64.decode(parts[2], Base64.DEFAULT))
+                        fun decodeB64(s: String): String {
+                            val f = if (s.indexOf('/') >= 0 || s.indexOf('+') >= 0) Base64.DEFAULT else Base64.URL_SAFE
+                            return String(Base64.decode(s, f))
+                        }
+                        val server = decodeB64(parts[0])
+                        val user = decodeB64(parts[1])
+                        val pass = decodeB64(parts[2])
                         val config = XtreamApi.XCConfig(server, user, pass)
                         val epgUrl = "$server/xmltv.php?username=$user&password=$pass"
                         getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE).edit().putString("epg_url", epgUrl).apply()
@@ -761,7 +832,7 @@ class MainActivity : AppCompatActivity() {
                     loadEpgIfNeeded()
                 }
             }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 mainHandler.post {
                     progressBar.visibility = View.GONE
                     statusText.text = "Errore: ${e.message?.take(50)}"
@@ -796,9 +867,9 @@ class MainActivity : AppCompatActivity() {
         val liveCount = allChannels.count { classifyChannel(it) == ContentType.LIVE }
         val vodCount = allChannels.count { classifyChannel(it) == ContentType.VOD }
         val seriesCount = allChannels.count { classifyChannel(it) == ContentType.SERIES }
-        filterLive.text = "LIVE TV ($liveCount)"
-        filterVod.text = "FILM ($vodCount)"
-        filterSeries.text = "SERIE ($seriesCount)"
+        filterLive.text = "${Language.t(this, "filter_live")} ($liveCount)"
+        filterVod.text = "${Language.t(this, "filter_movies")} ($vodCount)"
+        filterSeries.text = "${Language.t(this, "filter_series")} ($seriesCount)"
     }
 
     private fun classifyChannel(ch: com.iptv.player.model.Channel): ContentType {
@@ -938,15 +1009,15 @@ class MainActivity : AppCompatActivity() {
         val prefs = getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
         val epgUrl = epgUrlParam ?: prefs.getString("epg_url", "")?.takeIf { it.isNotBlank() } ?: return
         val ctx = this
-        statusText.text = "EPG: scaricamento..."
+        statusText.text = Language.t(this, "epg_downloading")
         statusText.visibility = View.VISIBLE
         executor.execute {
             val xml = EpgParser.download(ctx, epgUrl)
             if (xml == null) {
-                mainHandler.post { statusText.text = "EPG: download fallito" }
+                mainHandler.post { statusText.text = Language.t(this, "epg_fail") }
                 return@execute
             }
-            mainHandler.post { statusText.text = "EPG: parsing..." }
+            mainHandler.post { statusText.text = Language.t(this, "epg_parsing") }
             val (programmes, channelNames) = EpgParser.parse(xml)
             epgAllProgrammes = programmes
             val mapped = programmes.map { p ->
@@ -954,7 +1025,7 @@ class MainActivity : AppCompatActivity() {
                 p.copy(channel = displayName)
             }
             val byChannel = mapped.groupBy { normalizeName(it.channel) }
-            mainHandler.post { statusText.text = "EPG: associando..." }
+            mainHandler.post { statusText.text = Language.t(this, "epg_linking") }
             val now = mutableMapOf<String, EpgParser.Programme?>()
             val next = mutableMapOf<String, EpgParser.Programme?>()
             var matched = 0
@@ -982,7 +1053,7 @@ class MainActivity : AppCompatActivity() {
                 if (matched > 0) {
                     statusText.text = "EPG: $matched canali"
                 } else {
-                    statusText.text = "EPG: 0 match - nomi canali diversi?"
+                    statusText.text = Language.t(this, "epg_no_match")
                 }
                 mainHandler.postDelayed({ statusText.visibility = View.GONE }, 5000)
             }
@@ -1046,7 +1117,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         val editText = EditText(this@MainActivity).apply {
-            hint = "Cerca canale..."
+            hint = Language.t(this@MainActivity, "search_hint")
             setTextColor(0xFFFFFFFF.toInt())
             setHintTextColor(0xFF667788.toInt())
             textSize = 14f
@@ -1100,6 +1171,49 @@ class MainActivity : AppCompatActivity() {
         })
     }
 
+    private fun showInfoDialog() {
+        val ctx = this@MainActivity
+        val scroll = android.widget.ScrollView(ctx)
+        val content = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(24, 16, 24, 16)
+        }
+        fun addSection(title: String, body: String) {
+            val tv = android.widget.TextView(ctx).apply {
+                textSize = 13f
+                setPadding(0, 0, 0, 12)
+                setTextColor(0xFFCCDDEE.toInt())
+                movementMethod = android.text.method.LinkMovementMethod.getInstance()
+                val html = "<b>$title</b><br>$body"
+                if (android.os.Build.VERSION.SDK_INT >= 24) {
+                    text = android.text.Html.fromHtml(html, android.text.Html.FROM_HTML_MODE_LEGACY)
+                } else {
+                    @Suppress("DEPRECATION")
+                    text = android.text.Html.fromHtml(html)
+                }
+            }
+            content.addView(tv)
+        }
+        addSection("IPTV Player", "${Language.t(ctx, "version")} $VERSION \u2014 by GABRI<br>${Language.t(ctx, "guide_intro")}")
+        addSection(Language.t(ctx, "guide_add"), Language.t(ctx, "guide_add_body"))
+        addSection(Language.t(ctx, "guide_switch"), Language.t(ctx, "guide_switch_body"))
+        addSection(Language.t(ctx, "guide_search"), Language.t(ctx, "guide_search_body"))
+        addSection(Language.t(ctx, "guide_filters"), Language.t(ctx, "guide_filters_body"))
+        addSection(Language.t(ctx, "guide_fav"), Language.t(ctx, "guide_fav_body"))
+        addSection(Language.t(ctx, "guide_theme"), Language.t(ctx, "guide_theme_body"))
+        addSection(Language.t(ctx, "guide_epg"), Language.t(ctx, "guide_epg_body"))
+        addSection(Language.t(ctx, "guide_proxy"), Language.t(ctx, "guide_proxy_body"))
+        addSection(Language.t(ctx, "guide_cloud"), Language.t(ctx, "guide_cloud_body"))
+        addSection(Language.t(ctx, "guide_updates"), Language.t(ctx, "guide_updates_body"))
+        addSection(Language.t(ctx, "guide_disclaimer"), Language.t(ctx, "guide_disclaimer_body"))
+        scroll.addView(content)
+        AlertDialog.Builder(ctx)
+            .setTitle(Language.t(ctx, "guide_title"))
+            .setView(scroll)
+            .setPositiveButton(Language.t(ctx, "ok"), null)
+            .show()
+    }
+
     private fun showThemeDialog() {
         val ctx = this@MainActivity
         val prefs = ctx.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
@@ -1109,22 +1223,39 @@ class MainActivity : AppCompatActivity() {
         val colorVals = listOf(0xFFE94560.toInt(), 0xFF42A5F5.toInt(), 0xFF66BB6A.toInt(), 0xFFAB47BC.toInt(), 0xFFFF9800.toInt())
         val themeRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
         val buttons = mutableListOf<android.widget.Button>()
+        var selIdx = currentThemeIdx
+        fun updateButtons() {
+            buttons.forEachIndexed { j, b ->
+                val s = j == selIdx
+                b.setTextColor(if (s) 0xFFFFFFFF.toInt() else 0xFFAABBCC.toInt())
+                b.setBackgroundColor(if (s) colorVals[j] else 0xFF222244.toInt())
+            }
+        }
         colorNames.forEachIndexed { i, name ->
-            val isSel = i == currentThemeIdx
             val btn = android.widget.Button(ctx).apply {
                 text = name
-                setTextColor(if (isSel) 0xFFFFFFFF.toInt() else 0xFFAABBCC.toInt())
-                setBackgroundColor(if (isSel) colorVals[i] else 0xFF222244.toInt())
+                setTextColor(if (i == selIdx) 0xFFFFFFFF.toInt() else 0xFFAABBCC.toInt())
+                setBackgroundColor(if (i == selIdx) colorVals[i] else 0xFF222244.toInt())
                 textSize = 12f
                 setPadding(8, 8, 8, 8)
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(4, 4, 4, 4) }
+                isFocusable = true
+                isFocusableInTouchMode = true
+                setOnFocusChangeListener { _, hasFocus ->
+                    if (hasFocus) {
+                        setBackgroundColor(0xFF445566.toInt())
+                        setTextColor(0xFFFFFFFF.toInt())
+                    } else {
+                        val s = i == selIdx
+                        setBackgroundColor(if (s) colorVals[i] else 0xFF222244.toInt())
+                        setTextColor(if (s) 0xFFFFFFFF.toInt() else 0xFFAABBCC.toInt())
+                    }
+                }
                 setOnClickListener {
+                    selIdx = i
                     ThemeHelper.set(ctx, i)
                     applyTheme()
-                    buttons.forEachIndexed { j, b ->
-                        b.setTextColor(if (j == i) 0xFFFFFFFF.toInt() else 0xFFAABBCC.toInt())
-                        b.setBackgroundColor(if (j == i) colorVals[j] else 0xFF222244.toInt())
-                    }
+                    updateButtons()
                 }
             }
             buttons.add(btn)
@@ -1132,9 +1263,9 @@ class MainActivity : AppCompatActivity() {
         }
         layout.addView(themeRow)
         AlertDialog.Builder(ctx)
-            .setTitle("Seleziona Tema")
+            .setTitle(Language.t(ctx, "theme_title"))
             .setView(layout)
-            .setPositiveButton("OK", null)
+            .setPositiveButton(Language.t(ctx, "ok"), null)
             .show()
     }
 
@@ -1158,12 +1289,16 @@ class MainActivity : AppCompatActivity() {
 
         var cloudDialog: AlertDialog? = null
         val cloudBtn = Button(ctx).apply {
-            text = "Carica Playlist da Cloud"
+            text = Language.t(ctx, "add_cloud")
             setTextColor(0xFFFFFFFF.toInt()); textSize = 13f
             setBackgroundColor(theme.secondary)
+            isFocusable = true
+            setOnFocusChangeListener { _, hasFocus ->
+                setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else theme.secondary)
+            }
             setOnClickListener {
                 cloudDialog?.dismiss()
-                Toast.makeText(ctx, "Verifica cloud in corso...", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, Language.t(ctx, "cloud_checking"), Toast.LENGTH_SHORT).show()
                 loadFirebaseOnceOnceOnly()
             }
         }
@@ -1182,19 +1317,30 @@ class MainActivity : AppCompatActivity() {
             setPadding(16, 12, 16, 12); setTextColor(0xFFFFFFFF.toInt())
             background = ContextCompat.getDrawable(ctx, R.drawable.filter_btn_bg)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
-            isSelected = true
+            isSelected = true; isFocusable = true
+            setOnFocusChangeListener { _, hasFocus ->
+                setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else 0x00000000.toInt())
+            }
         }
         val btnXc = TextView(ctx).apply {
             text = "Xtream Codes"; gravity = android.view.Gravity.CENTER; textSize = 14f
             setPadding(16, 12, 16, 12); setTextColor(0xFFFFFFFF.toInt())
             background = ContextCompat.getDrawable(ctx, R.drawable.filter_btn_bg)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            isFocusable = true
+            setOnFocusChangeListener { _, hasFocus ->
+                setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else 0x00000000.toInt())
+            }
         }
         val btnStalker = TextView(ctx).apply {
             text = "Stalker MAC"; gravity = android.view.Gravity.CENTER; textSize = 14f
             setPadding(16, 12, 16, 12); setTextColor(0xFFFFFFFF.toInt())
             background = ContextCompat.getDrawable(ctx, R.drawable.filter_btn_bg)
             layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            isFocusable = true
+            setOnFocusChangeListener { _, hasFocus ->
+                setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else 0x00000000.toInt())
+            }
         }
         tabRow.addView(btnM3u); tabRow.addView(btnXc); tabRow.addView(btnStalker)
         layout.addView(tabRow)
@@ -1216,7 +1362,7 @@ class MainActivity : AppCompatActivity() {
         val stalkerServer = EditText(ctx).apply { hint = "http://server.com:8080/c/"; setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0xFF667788.toInt()); textSize = 13f; isFocusable = true; isFocusableInTouchMode = true }
         val stalkerMac = EditText(ctx).apply { hint = "MAC (es. 00:1A:79:XX:XX:XX)"; setTextColor(0xFFFFFFFF.toInt()); setHintTextColor(0xFF667788.toInt()); textSize = 13f; isFocusable = true; isFocusableInTouchMode = true }
         val stalkerInfo = TextView(ctx).apply {
-            text = "Formati comuni: http://server.com:8080/c/  OPPURE  http://server.com:8080/stalker_portal/c/"
+            text = "Inserisci URL server (es. http://server.com:8080  oppure  http://server.com:8080/c/)"
             setTextColor(0xFF667788.toInt()); textSize = 10f
         }
         stalkerLayout.addView(stalkerServer); stalkerLayout.addView(stalkerMac); stalkerLayout.addView(stalkerInfo)
@@ -1248,14 +1394,14 @@ class MainActivity : AppCompatActivity() {
                     val srv = stalkerServer.text.toString().trim()
                     val mac = stalkerMac.text.toString().trim()
                     if (srv.isBlank() || mac.isBlank()) return@setPositiveButton
-                    url = "stalker://${android.util.Base64.encodeToString(srv.toByteArray(), android.util.Base64.NO_WRAP)}/${mac.replace(":", "").replace("-", "").uppercase()}"
+                    url = "stalker://${android.util.Base64.encodeToString(srv.toByteArray(), android.util.Base64.URL_SAFE)}/${mac.replace(":", "").replace("-", "").uppercase()}"
                     name = "STB ${mac.takeLast(6)}"
                 } else if (btnXc.isSelected) {
                     val s = xcServer.text.toString().trim()
                     val u = xcUser.text.toString().trim()
                     val p = xcPass.text.toString().trim()
                     if (s.isBlank() || u.isBlank() || p.isBlank()) return@setPositiveButton
-                    url = "xc://${android.util.Base64.encodeToString(s.toByteArray(), android.util.Base64.NO_WRAP)}/${android.util.Base64.encodeToString(u.toByteArray(), android.util.Base64.NO_WRAP)}/${android.util.Base64.encodeToString(p.toByteArray(), android.util.Base64.NO_WRAP)}"
+                    url = "xc://${android.util.Base64.encodeToString(s.toByteArray(), android.util.Base64.URL_SAFE)}/${android.util.Base64.encodeToString(u.toByteArray(), android.util.Base64.URL_SAFE)}/${android.util.Base64.encodeToString(p.toByteArray(), android.util.Base64.URL_SAFE)}"
                     name = u
                 } else {
                     url = m3uInput.text.toString().trim()
@@ -1291,6 +1437,11 @@ class MainActivity : AppCompatActivity() {
             val btn = TextView(ctx).apply {
                 text = label; setPadding(8, 6, 8, 6); setTextColor(0xFFAABBCC.toInt()); textSize = 10f
                 background = ContextCompat.getDrawable(ctx, R.drawable.filter_btn_bg)
+                isFocusable = true
+                setOnFocusChangeListener { _, hasFocus ->
+                    setTextColor(if (hasFocus) 0xFFFFFFFF.toInt() else 0xFFAABBCC.toInt())
+                    setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else 0x00000000.toInt())
+                }
                 setOnClickListener { uaInput.setText(when(label) {
                     "VLC" -> "VLC/3.0.20 LibVLC/3.0.20"
                     "Chrome" -> "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
@@ -1315,6 +1466,11 @@ class MainActivity : AppCompatActivity() {
             val btn = TextView(ctx).apply {
                 text = label; setPadding(8, 6, 8, 6); setTextColor(0xFFAABBCC.toInt()); textSize = 10f
                 background = ContextCompat.getDrawable(ctx, R.drawable.filter_btn_bg)
+                isFocusable = true
+                setOnFocusChangeListener { _, hasFocus ->
+                    setTextColor(if (hasFocus) 0xFFFFFFFF.toInt() else 0xFFAABBCC.toInt())
+                    setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else 0x00000000.toInt())
+                }
                 setOnClickListener { dnsInput.setText(if (label == "Auto") "" else label) }
             }
             dnsPresets.addView(btn)
@@ -1337,29 +1493,74 @@ class MainActivity : AppCompatActivity() {
         layout.addView(autoProxyRow)
 
         val proxyStatus = TextView(ctx).apply {
-            text = if (AutoProxy.bestProxy != null) "${AutoProxy.bestProxy!!.host}:${AutoProxy.bestProxy!!.port} (${AutoProxy.bestProxy!!.speed}ms)" else "Non testato"
+            text = if (AutoProxy.bestProxy != null) "${AutoProxy.bestProxy!!.host}:${AutoProxy.bestProxy!!.port} (${AutoProxy.bestProxy!!.speed}ms)" else Language.t(ctx, "proxy_not_tested")
             setTextColor(0xFF8899AA.toInt()); textSize = 10f; setPadding(40, 2, 0, 0)
         }
         layout.addView(proxyStatus)
 
         val scanBtn = android.widget.Button(ctx).apply {
-            text = "Cerca Proxy Veloci"
+            text = Language.t(ctx, "proxy_search")
             setTextColor(0xFFFFFFFF.toInt()); textSize = 11f
             setBackgroundColor(theme.secondary)
+            isFocusable = true
+            setOnFocusChangeListener { _, hasFocus ->
+                setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else theme.secondary)
+            }
             setOnClickListener {
                 it.isEnabled = false
-                (it as android.widget.Button).text = "Ricerca..."
-                proxyStatus.text = "Ricerca in corso..."
+                (it as android.widget.Button).text = Language.t(ctx, "proxy_searching")
+                proxyStatus.text = Language.t(ctx, "proxy_searching")
                 AutoProxy.startScan(ctx) { result ->
                     mainHandler.post {
                         it.isEnabled = true
-                        it.text = "Cerca Proxy Veloci"
-                        proxyStatus.text = if (result != null) "${result.host}:${result.port} (${result.speed}ms)" else "Nessuno trovato"
+                        it.text = Language.t(ctx, "proxy_search")
+                        proxyStatus.text = if (result != null) "${result.host}:${result.port} (${result.speed}ms)" else Language.t(ctx, "proxy_none")
                     }
                 }
             }
         }
         layout.addView(scanBtn)
+
+        val countryBtn = android.widget.Button(ctx).apply {
+            val countryNames = mapOf(
+                "all" to Language.t(ctx, "proxy_all"),
+                "IT" to "Italia", "DE" to "Germania", "FR" to "Francia",
+                "GB" to "Regno Unito", "NL" to "Paesi Bassi", "CH" to "Svizzera",
+                "ES" to "Spagna", "AT" to "Austria", "BE" to "Belgio",
+                "PL" to "Polonia", "RO" to "Romania", "BG" to "Bulgaria",
+                "CZ" to "Rep. Ceca", "DK" to "Danimarca", "SE" to "Svezia",
+                "NO" to "Norvegia", "FI" to "Finlandia", "PT" to "Portogallo",
+                "US" to "Stati Uniti", "CA" to "Canada", "BR" to "Brasile",
+                "JP" to "Giappone", "KR" to "Corea del Sud", "IN" to "India",
+                "AU" to "Australia", "RU" to "Russia", "TR" to "Turchia",
+            )
+            val saved = prefs.getString("proxy_country", "all") ?: "all"
+            AutoProxy.selectedCountry = saved
+            text = "${Language.t(ctx, "proxy_country")}: ${countryNames[saved] ?: saved}"
+            setTextColor(0xFFFFFFFF.toInt()); textSize = 11f
+            setBackgroundColor(theme.secondary)
+            isFocusable = true
+            setOnFocusChangeListener { _, hasFocus ->
+                setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else theme.secondary)
+            }
+            setOnClickListener {
+                val entries = countryNames.entries.toList()
+                val names = entries.map { it.value }.toTypedArray()
+                val codes = entries.map { it.key }.toTypedArray()
+                android.app.AlertDialog.Builder(ctx)
+                    .setTitle(Language.t(ctx, "proxy_country"))
+                    .setSingleChoiceItems(names, codes.indexOf(prefs.getString("proxy_country", "all"))) { d, i ->
+                        val code = codes[i]
+                        AutoProxy.selectedCountry = code
+                        prefs.edit().putString("proxy_country", code).apply()
+                        text = "${Language.t(ctx, "proxy_country")}: ${names[i]}"
+                        d.dismiss()
+                    }
+                    .setNegativeButton(Language.t(ctx, "cancel")) { d, _ -> d.dismiss() }
+                    .show()
+            }
+        }
+        layout.addView(countryBtn)
         layout.addView(TextView(ctx).apply { layoutParams = LinearLayout.LayoutParams(1, 12) })
 
         val macText = TextView(ctx).apply {
@@ -1369,9 +1570,13 @@ class MainActivity : AppCompatActivity() {
         layout.addView(macText)
 
         val clearCloudBtn = android.widget.Button(ctx).apply {
-            text = "Cancella dati Cloud"
+            text = Language.t(ctx, "cloud_clear")
             setTextColor(0xFFEF5350.toInt()); textSize = 11f
             setBackgroundColor(0xFF1a0a0a.toInt())
+            isFocusable = true
+            setOnFocusChangeListener { _, hasFocus ->
+                setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else 0xFF1a0a0a.toInt())
+            }
             setOnClickListener {
                 val dev = mqttSync?.deviceCode ?: return@setOnClickListener
                 pollExecutor.execute {
@@ -1383,31 +1588,43 @@ class MainActivity : AppCompatActivity() {
                         conn.responseCode; conn.disconnect()
                     } catch (_: Exception) {}
                 }
-                Toast.makeText(ctx, "Cloud cancellato", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, Language.t(ctx, "cloud_deleted"), Toast.LENGTH_SHORT).show()
             }
         }
         layout.addView(clearCloudBtn)
 
         val backupRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = android.view.Gravity.CENTER }
         val backupBtn = android.widget.Button(ctx).apply {
-            text = "Backup Playlist"; setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
+            text = Language.t(ctx, "backup"); setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
             setBackgroundColor(0xFF1a3a1a.toInt())
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            isFocusable = true
+            setOnFocusChangeListener { _, hasFocus ->
+                setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else 0xFF1a3a1a.toInt())
+            }
             setOnClickListener { backupPlaylists() }
         }
         val restoreBtn = android.widget.Button(ctx).apply {
-            text = "Ripristina"; setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
+            text = Language.t(ctx, "restore"); setTextColor(0xFFFFFFFF.toInt()); textSize = 10f
             setBackgroundColor(0xFF1a1a3a.toInt())
             layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            isFocusable = true
+            setOnFocusChangeListener { _, hasFocus ->
+                setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else 0xFF1a1a3a.toInt())
+            }
             setOnClickListener { restorePlaylists() }
         }
         backupRow.addView(backupBtn); backupRow.addView(restoreBtn)
         layout.addView(backupRow)
 
         val diagnosticaBtn = android.widget.Button(ctx).apply {
-            text = "Diagnostica"
+            text = Language.t(ctx, "diagnostics")
             setTextColor(0xFFFFFFFF.toInt()); textSize = 12f
             setBackgroundColor(0xFF2a2a4a.toInt())
+            isFocusable = true
+            setOnFocusChangeListener { _, hasFocus ->
+                setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else 0xFF2a2a4a.toInt())
+            }
             setOnClickListener {
                 val info = StringBuilder()
                 info.append("Versione App: ${VERSION}\n")
@@ -1416,29 +1633,33 @@ class MainActivity : AppCompatActivity() {
                 info.append("Playlist: ${PlaylistManager.getAll(this@MainActivity).size}\n")
                 info.append("Canali caricati: ${allChannels.size}\n")
                 info.append("EPG: ${if (epgAllProgrammes.isNotEmpty()) epgAllProgrammes.size.toString() + " programmi" else "Non caricato"}\n")
-                info.append("Proxy: ${AutoProxy.bestProxy?.let { "${it.host}:${it.port} (${it.speed}ms)" } ?: "Non testato"}\n")
+                info.append("Proxy: ${AutoProxy.bestProxy?.let { "${it.host}:${it.port} (${it.speed}ms)" } ?: Language.t(ctx, "proxy_not_tested")}\n")
                 info.append("Attivato: ${if (prefs.getBoolean("activated", false)) "Si" else "Verifica in corso..."}\n")
-                AlertDialog.Builder(ctx).setTitle("Diagnostica").setMessage(info.toString()).setPositiveButton("OK", null).show()
+                AlertDialog.Builder(ctx).setTitle(Language.t(ctx, "diagnostics")).setMessage(info.toString()).setPositiveButton(Language.t(ctx, "ok"), null).show()
             }
         }
         layout.addView(diagnosticaBtn)
 
         val donateBtn = android.widget.Button(ctx).apply {
-            text = "⚡ Fai una donazione"
+            text = Language.t(ctx, "donate")
             setTextColor(0xFFFFD700.toInt()); textSize = 12f
             setBackgroundColor(0xFF1a1a0a.toInt())
+            isFocusable = true
+            setOnFocusChangeListener { _, hasFocus ->
+                setBackgroundColor(if (hasFocus) 0xFF445566.toInt() else 0xFF1a1a0a.toInt())
+            }
             setOnClickListener {
                 val btc = "bitcoin:BC1QWGLY87FWFWWXNTWYDJSRFMQM9R3CPUK5SX30PJ"
                 val displayAddr = btc.removePrefix("bitcoin:")
                 AlertDialog.Builder(ctx)
-                    .setTitle("Donazione Bitcoin")
-                    .setMessage("Supporta lo sviluppo inviando BTC:\n\n$displayAddr\n\nScansiona o copia l'indirizzo.")
-                    .setPositiveButton("Copia indirizzo") { _, _ ->
+                    .setTitle(Language.t(ctx, "donate_title"))
+                    .setMessage("${Language.t(ctx, "donate_msg")}\n\n$displayAddr\n\nScansiona o copia l'indirizzo.")
+                    .setPositiveButton(Language.t(ctx, "donate_copy")) { _, _ ->
                         val clip = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
                         clip.setPrimaryClip(android.content.ClipData.newPlainText("BTC", displayAddr))
-                        Toast.makeText(ctx, "Indirizzo copiato!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(ctx, Language.t(ctx, "btc_copied"), Toast.LENGTH_SHORT).show()
                     }
-                    .setNegativeButton("Chiudi", null)
+                    .setNegativeButton(Language.t(ctx, "close"), null)
                     .show()
             }
         }
@@ -1447,11 +1668,11 @@ class MainActivity : AppCompatActivity() {
         val themeLabel = TextView(ctx).apply { text = "❯ Tema:"; setTextColor(theme.accent); textSize = 12f }
         layout.addView(themeLabel)
         val themeRow = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL }
-        val currentThemeIdx = prefs.getInt("theme", 0)
+        val curThemeIdx = prefs.getInt("theme", 0)
         val colorNames = listOf("Rosso", "Blu", "Verde", "Viola", "Arancio")
         val colorVals = listOf(0xFFE94560.toInt(), 0xFF42A5F5.toInt(), 0xFF66BB6A.toInt(), 0xFFAB47BC.toInt(), 0xFFFF9800.toInt())
         colorNames.forEachIndexed { i, name ->
-            val isSel = i == currentThemeIdx
+            val isSel = i == curThemeIdx
             val btn = android.widget.Button(ctx).apply {
                 text = name
                 setTextColor(if (isSel) 0xFFFFFFFF.toInt() else 0xFFAABBCC.toInt())
@@ -1459,10 +1680,21 @@ class MainActivity : AppCompatActivity() {
                 textSize = 10f
                 setPadding(8, 4, 8, 4)
                 layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                isFocusable = true
+                isFocusableInTouchMode = true
+                setOnFocusChangeListener { _, hasFocus ->
+                    if (hasFocus) {
+                        setBackgroundColor(0xFF445566.toInt())
+                        setTextColor(0xFFFFFFFF.toInt())
+                    } else {
+                        val s = i == curThemeIdx
+                        setBackgroundColor(if (s) colorVals[i] else 0xFF222244.toInt())
+                        setTextColor(if (s) 0xFFFFFFFF.toInt() else 0xFFAABBCC.toInt())
+                    }
+                }
                 setOnClickListener {
                     ThemeHelper.set(ctx, i)
                     applyTheme()
-                    AlertDialog.Builder(ctx).setTitle("Tema cambiato").setMessage("Tema: $name").setPositiveButton("OK", null).show()
                 }
             }
             themeRow.addView(btn)
@@ -1470,17 +1702,17 @@ class MainActivity : AppCompatActivity() {
         layout.addView(themeRow)
 
         AlertDialog.Builder(ctx)
-            .setTitle("Impostazioni")
+            .setTitle(Language.t(ctx, "settings"))
             .setView(scroll)
-            .setPositiveButton("Salva") { _, _ ->
+            .setPositiveButton(Language.t(ctx, "save")) { _, _ ->
                 prefs.edit().putString("user_agent", uaInput.text.toString().trim())
                     .putString("dns_server", dnsInput.text.toString().trim())
                     .putBoolean("force_warp", warpCheck.isChecked)
                     .putBoolean("auto_proxy", autoProxyCheck.isChecked)
                     .apply()
-                Toast.makeText(ctx, "Salvato", Toast.LENGTH_SHORT).show()
+                Toast.makeText(ctx, Language.t(ctx, "saved"), Toast.LENGTH_SHORT).show()
             }
-            .setNegativeButton("Annulla", null)
+            .setNegativeButton(Language.t(ctx, "cancel"), null)
             .show()
     }
 
@@ -1497,9 +1729,9 @@ class MainActivity : AppCompatActivity() {
                 conn.connectTimeout = 3000; conn.readTimeout = 3000
                 conn.outputStream.write(json.toByteArray())
                 conn.responseCode; conn.disconnect()
-                mainHandler.post { Toast.makeText(this@MainActivity, "Backup salvato!", Toast.LENGTH_SHORT).show() }
+                mainHandler.post { Toast.makeText(this@MainActivity, Language.t(this@MainActivity, "backup_ok"), Toast.LENGTH_SHORT).show() }
             } catch (_: Exception) {
-                mainHandler.post { Toast.makeText(this@MainActivity, "Backup fallito", Toast.LENGTH_SHORT).show() }
+                mainHandler.post { Toast.makeText(this@MainActivity, Language.t(this@MainActivity, "backup_fail"), Toast.LENGTH_SHORT).show() }
             }
         }
     }
@@ -1519,10 +1751,10 @@ class MainActivity : AppCompatActivity() {
                     for (pl in list) { PlaylistManager.addOrUpdate(this@MainActivity, pl) }
                     mainHandler.post {
                         updateCodeText("Ripristinate ${list.size}")
-                        Toast.makeText(this@MainActivity, "${list.size} playlist ripristinate!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(this@MainActivity, "${list.size} ${Language.t(this@MainActivity, "restore_ok")}", Toast.LENGTH_SHORT).show()
                     }
                 } else {
-                    mainHandler.post { Toast.makeText(this@MainActivity, "Nessun backup", Toast.LENGTH_SHORT).show() }
+                    mainHandler.post { Toast.makeText(this@MainActivity, Language.t(this@MainActivity, "restore_fail"), Toast.LENGTH_SHORT).show() }
                 }
             } catch (_: Exception) {
                 mainHandler.post { Toast.makeText(this@MainActivity, "Ripristino fallito", Toast.LENGTH_SHORT).show() }
@@ -1583,7 +1815,7 @@ class MainActivity : AppCompatActivity() {
             finish()
         } else {
             backPressedOnce = true
-            Toast.makeText(this, "Premi di nuovo INDIETRO per uscire", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, Language.t(this, "exit_msg"), Toast.LENGTH_SHORT).show()
             mainHandler.postDelayed({ backPressedOnce = false }, 2000)
         }
     }

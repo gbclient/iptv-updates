@@ -112,7 +112,21 @@ class PlayerActivity : AppCompatActivity() {
             handler.postDelayed({ epgOverlay.visibility = View.GONE }, 8000)
         }
 
-        initializePlayer(name, url)
+        resolveAndPlay(name, url)
+    }
+
+    private fun resolveAndPlay(name: String, url: String) {
+        if (!url.contains("create_link")) { initializePlayer(name, url); return }
+        Thread {
+            val resolved = StalkerApi.resolveStreamUrl(url)
+            handler.post {
+                if (resolved.contains("create_link") || resolved == url) {
+                    showError("Risoluzione stream fallita - server stream non disponibile")
+                } else {
+                    initializePlayer(name, resolved)
+                }
+            }
+        }.start()
     }
 
     private fun initializePlayer(name: String, url: String) {
@@ -152,13 +166,7 @@ class PlayerActivity : AppCompatActivity() {
                     }
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
                         progressBar.visibility = View.GONE
-                        // Auto-reconnect: riprova dopo 3 secondi
-                        handler.postDelayed({
-                            if (player?.playbackState == Player.STATE_IDLE) {
-                                exoPlayer.prepare()
-                                exoPlayer.playWhenReady = true
-                            }
-                        }, 3000)
+                        showError("Errore: ${error.localizedMessage ?: error.errorCodeName}")
                     }
                 })
             }

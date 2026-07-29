@@ -20,6 +20,7 @@ object AutoProxy {
     @Volatile var bestProxy: ProxyInfo? = null
     @Volatile var isScanning = false
     @Volatile var scanProgress = ""
+    @Volatile var selectedCountry = "all"
 
     private const val TAG = "AutoProxy"
 
@@ -91,9 +92,10 @@ object AutoProxy {
 
     private fun fetchProxies(): List<ProxyInfo> {
         val proxies = mutableListOf<ProxyInfo>()
+        val country = selectedCountry
         val apis = listOf(
-            "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks5&timeout=5000&country=all&limit=50",
-            "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=all&limit=20",
+            "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=socks5&timeout=5000&country=$country&limit=50",
+            "https://api.proxyscrape.com/v2/?request=displayproxies&protocol=http&timeout=5000&country=$country&limit=20",
         )
         for (api in apis) {
             try {

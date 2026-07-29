@@ -135,6 +135,43 @@
         app:layout_constraintEnd_toStartOf="@id/searchBtn" />
 
     <TextView
+        android:id="@+id/infoBtn"
+        android:layout_width="40dp"
+        android:layout_height="0dp"
+        android:text="ℹ️"
+        android:textColor="#e94560"
+        android:textSize="16sp"
+        android:gravity="center"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:clickable="true"
+        android:background="@drawable/header_background"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="@id/ipText"
+        app:layout_constraintStart_toEndOf="@id/searchBtn"
+        app:layout_constraintEnd_toStartOf="@id/langBtn" />
+
+    <TextView
+        android:id="@+id/langBtn"
+        android:layout_width="50dp"
+        android:layout_height="0dp"
+        android:text="ITA"
+        android:textColor="#e94560"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:focusable="true"
+        android:focusableInTouchMode="true"
+        android:clickable="true"
+        android:background="@drawable/header_background"
+        android:visibility="gone"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintBottom_toBottomOf="@id/ipText"
+        app:layout_constraintStart_toEndOf="@id/infoBtn"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <TextView
         android:id="@+id/searchBtn"
         android:layout_width="40dp"
         android:layout_height="0dp"
@@ -150,7 +187,7 @@
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintBottom_toBottomOf="@id/ipText"
         app:layout_constraintStart_toEndOf="@id/themeBtn"
-        app:layout_constraintEnd_toEndOf="parent" />
+        app:layout_constraintEnd_toStartOf="@id/infoBtn" />
 
     <ProgressBar
         android:id="@+id/progressBar"

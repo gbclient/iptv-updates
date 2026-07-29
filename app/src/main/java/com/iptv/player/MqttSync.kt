@@ -49,8 +49,27 @@ class MqttSync(
     private val mainHandler = Handler(Looper.getMainLooper())
     private var connected = false
     private var reconnectAttempts = 0
+    private val knownCodes = mutableListOf<String>()
 
     val deviceCode: String by lazy { generateDeviceCode() }
+
+    private fun fetchKnownCodes() {
+        try {
+            val url = java.net.URL("https://iptv-player-eac9e-default-rtdb.europe-west1.firebasedatabase.app/backups.json?shallow=true")
+            val conn = url.openConnection() as java.net.HttpURLConnection
+            conn.connectTimeout = 3000; conn.readTimeout = 3000
+            if (conn.responseCode == 200) {
+                val body = java.io.BufferedReader(java.io.InputStreamReader(conn.inputStream)).readText()
+                conn.disconnect()
+                val type = object : com.google.gson.reflect.TypeToken<Map<String, Boolean>>() {}.type
+                val codes: Map<String, Boolean> = gson.fromJson(body, type)
+                knownCodes.clear()
+                knownCodes.addAll(codes.keys)
+                knownCodes.remove(deviceCode)
+                Log.i(TAG, "Codici backup trovati: ${knownCodes.size}")
+            } else { conn.disconnect() }
+        } catch (_: Exception) {}
+    }
 
     fun connect() {
         executor.execute {
@@ -70,19 +89,11 @@ class MqttSync(
                 connected = true
                 reconnectAttempts = 0
 
-                val configTopic = "$TOPIC_PREFIX/$deviceCode/config"
-                mqttClient?.subscribe(configTopic) { _, message ->
-                    handleConfigMessage(message)
-                }
+                fetchKnownCodes()
 
-                val getPlaylistsTopic = "$TOPIC_PREFIX/$deviceCode/getplaylists"
-                mqttClient?.subscribe(getPlaylistsTopic) { _, _ ->
-                    publishPlaylists()
-                }
-
-                val deleteTopic = "$TOPIC_PREFIX/$deviceCode/deleteplaylist"
-                mqttClient?.subscribe(deleteTopic) { _, message ->
-                    handleDeletePlaylist(message)
+                val allCodes = (listOf(deviceCode) + knownCodes).distinct()
+                for (code in allCodes) {
+                    subscribeToTopics(code)
                 }
 
                 mainHandler.post {
@@ -93,7 +104,7 @@ class MqttSync(
                 val statusTopic = "$TOPIC_PREFIX/$deviceCode/status"
                 mqttClient?.publish(statusTopic, MqttMessage("online".toByteArray()))
 
-                Log.i(TAG, "MQTT connesso, device: $deviceCode")
+                Log.i(TAG, "MQTT connesso, device: $deviceCode, aliases: ${allCodes.size}")
             } catch (e: Exception) {
                 Log.e(TAG, "Errore connessione MQTT", e)
                 connected = false
@@ -184,15 +195,38 @@ class MqttSync(
     }
 
     private fun generateDeviceCode(): String {
+        val prefs = context.getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
+        val stored = prefs.getString("device_code", null)
+        if (stored != null) return stored
         val androidId = Settings.Secure.getString(
             context.contentResolver,
             Settings.Secure.ANDROID_ID
         ) ?: "unknown"
         val hash = MessageDigest.getInstance("MD5")
             .digest(androidId.toByteArray())
-        return hash.take(4)
+        val code = hash.take(4)
             .joinToString("") { "%02x".format(it) }
             .uppercase()
+        prefs.edit().putString("device_code", code).apply()
+        return code
+    }
+
+    private fun subscribeToTopics(code: String) {
+        try {
+            val configTopic = "$TOPIC_PREFIX/$code/config"
+            mqttClient?.subscribe(configTopic) { _, message ->
+                handleConfigMessage(message)
+            }
+            val getPlaylistsTopic = "$TOPIC_PREFIX/$code/getplaylists"
+            mqttClient?.subscribe(getPlaylistsTopic) { _, _ ->
+                publishPlaylists()
+            }
+            val deleteTopic = "$TOPIC_PREFIX/$code/deleteplaylist"
+            mqttClient?.subscribe(deleteTopic) { _, message ->
+                handleDeletePlaylist(message)
+            }
+            Log.i(TAG, "Sottoscritto a $code")
+        } catch (_: Exception) {}
     }
 
     fun disconnect() {
