@@ -204,58 +204,32 @@ object StalkerApi {
             val resp = client.newCall(rb.build()).execute()
             if (resp.code != 200) { lastError = "HTTP ${resp.code}"; return emptyList() }
             val body = resp.body ?: run { resp.close(); return emptyList() }
-            val reader = JsonReader(body.charStream())
-            reader.beginObject()
-            val list = mutableListOf<RawChannel>()
-            while (reader.hasNext()) {
-                val key = reader.nextName()
-                if (key == "js") {
-                    reader.beginObject()
-                    while (reader.hasNext()) {
-                        val k2 = reader.nextName()
-                        if (k2 == "data") {
-                            reader.beginArray()
-                            while (reader.hasNext()) {
-                                reader.beginObject()
-                                var id = ""; var chName = ""; var number = ""
-                                var logo: String? = null; var cmd: String? = null; var tvGenreId: String? = null
-                                while (reader.hasNext()) {
-                                    val f = reader.nextName()
-                                    when (f) {
-                                        "id" -> id = reader.nextString()
-                                        "name" -> chName = reader.nextString()
-                                        "number" -> number = reader.nextString()
-                                        "logo" -> logo = if (reader.peek() == JsonToken.NULL) { reader.nextNull(); null } else reader.nextString()
-                                        "cmd" -> cmd = if (reader.peek() == JsonToken.NULL) { reader.nextNull(); null } else reader.nextString()
-                                        "tv_genre_id" -> {
-                                            tvGenreId = when (reader.peek()) {
-                                                JsonToken.STRING -> reader.nextString()
-                                                JsonToken.NUMBER -> reader.nextDouble().toInt().toString()
-                                                else -> { reader.nextNull(); null }
-                                            }
-                                        }
-                                        else -> reader.skipValue()
-                                    }
-                                }
-                                reader.endObject()
-                                list.add(RawChannel(id = id, name = chName, number = number, logo = logo, cmd = cmd, tvGenreId = tvGenreId))
-                            }
-                            reader.endArray()
-                        } else {
-                            reader.skipValue()
-                        }
-                    }
-                    reader.endObject()
-                } else {
-                    reader.skipValue()
+            val raw = body.string()
+            resp.close()
+
+            val json = try { JsonParser.parseString(raw) } catch (_: Exception) { return emptyList() }
+
+            if (json.isJsonArray) return parseChannels(json.asJsonArray)
+
+            val obj = json.asJsonObject
+            val js = obj.get("js")
+            if (js != null) {
+                if (js.isJsonArray) return parseChannels(js.asJsonArray)
+                if (js.isJsonObject) {
+                    val data = js.asJsonObject.get("data")
+                    if (data != null && data.isJsonArray) return parseChannels(data.asJsonArray)
+                    val arr = findArrayInObject(js.asJsonObject)
+                    if (arr != null) return parseChannels(arr)
                 }
             }
-            reader.endObject()
-            reader.close()
-            resp.close()
-            list
+            val direct = findArrayInObject(obj)
+            if (direct != null) return parseChannels(direct)
+            val itv = obj.get("itv")
+            if (itv != null && itv.isJsonArray) return parseChannels(itv.asJsonArray)
+
+            emptyList()
         } catch (e: Exception) {
-            android.util.Log.e("STALKER", "streaming error: ${e.message}")
+            android.util.Log.e("STALKER", "channels error: ${e.message}")
             emptyList()
         }
     }
@@ -281,36 +255,31 @@ object StalkerApi {
                 if (code == 403) { lastError = "HTTP 403 - Accesso negato (blocco IP o server richiede VPN)"; return null }
             }
 
-            val json = try { JsonParser.parseString(body).asJsonObject } catch (_: Exception) { null }
-            if (json == null) {
-                android.util.Log.w("STALKER", "Non-JSON: ${body.take(500)}")
-                return null
-            }
-            val js = json.get("js") ?: run {
-                android.util.Log.w("STALKER", "No 'js' key: ${body.take(500)}")
-                return null
+            val json = try { JsonParser.parseString(body) } catch (_: Exception) { return null }
+            if (json.isJsonArray) return ApiResult(array = json.asJsonArray, rawBody = body.take(1000))
+            if (!json.isJsonObject) return null
+            val obj = json.asJsonObject
+
+            val js = obj.get("js")
+            if (js != null) {
+                if (js.isJsonArray) return ApiResult(array = js.asJsonArray, rawBody = body.take(1000))
+                if (js.isJsonObject) {
+                    val jso = js.asJsonObject
+                    val token = jso.get("token")?.asString
+                    if (token != null) return ApiResult(error = jso.get("error")?.asString ?: "", token = token, rawBody = body.take(1000))
+                    val arr = findArrayInObject(jso)
+                    if (arr != null) return ApiResult(array = arr, rawBody = body.take(1000))
+                    return ApiResult(error = jso.get("error")?.asString ?: "", rawBody = body.take(1000))
+                }
             }
 
-            if (js.isJsonArray) {
-                ApiResult(array = js.asJsonArray, rawBody = body.take(1000))
-            } else if (js.isJsonObject) {
-                val obj = js.asJsonObject
-                val token = obj.get("token")?.asString
-                if (token != null) {
-                    ApiResult(
-                        error = obj.get("error")?.asString ?: "",
-                        token = token,
-                        rawBody = body.take(1000)
-                    )
-                } else {
-                    val arr = findArrayInObject(obj)
-                    if (arr != null) {
-                        ApiResult(array = arr, rawBody = body.take(1000))
-                    } else {
-                        ApiResult(error = obj.get("error")?.asString ?: "", rawBody = body.take(1000))
-                    }
-                }
-            } else null
+            val token = obj.get("token")?.asString
+            if (token != null) return ApiResult(token = token, rawBody = body.take(1000))
+
+            val arr = findArrayInObject(obj)
+            if (arr != null) return ApiResult(array = arr, rawBody = body.take(1000))
+
+            ApiResult(rawBody = body.take(1000))
         } catch (e: Exception) {
             val msg = e.message ?: ""
             lastError = when {
