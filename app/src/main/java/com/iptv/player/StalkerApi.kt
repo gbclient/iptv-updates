@@ -83,10 +83,18 @@ object StalkerApi {
                         "Mozilla/5.0 (QtEmbedded; U; Linux; Android_1.0; en-us;)" to "mag"
                     )) {
                         if (hs != null) break
-                        val url = "$ep?type=$type&action=handshake&JsHttpRequest=1&mac=$macFmt&stb_lang=en&timezone=UTC&token=&device_id=${md5(macFmt.replace(":", "").replace("-", ""))}"
-                        android.util.Log.i("STALKER", "HS → $url")
-                        hs = apiGet(url, ua)
-                        if (hs != null) { usedEp = ep; usedMac = macFmt; break }
+                        val did = md5(macFmt.replace(":", "").replace("-", ""))
+                        for (urlSuffix in listOf(
+                            "?type=$type&action=handshake&JsHttpRequest=1&mac=$macFmt&stb_lang=en&timezone=UTC&token=&device_id=$did",
+                            "?type=$type&action=handshake&JsHttpRequest=1&mac=$macFmt&stb_lang=en&timezone=UTC&token=",
+                            "?type=$type&action=handshake&mac=$macFmt&stb_lang=en&timezone=UTC&token="
+                        )) {
+                            if (hs != null) break
+                            val url = "$ep$urlSuffix"
+                            android.util.Log.i("STALKER", "HS → $url")
+                            hs = apiGet(url, ua)
+                            if (hs != null) { usedEp = ep; usedMac = macFmt; break }
+                        }
                     }
                 }
                 if (hs != null) break
