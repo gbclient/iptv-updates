@@ -203,7 +203,8 @@ object StalkerApi {
             val rb = Request.Builder().url(url).header("User-Agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C)").header("Accept", "*/*")
             val resp = client.newCall(rb.build()).execute()
             if (resp.code != 200) { lastError = "HTTP ${resp.code}"; return emptyList() }
-            val reader = JsonReader(resp.body!!.charStream())
+            val body = resp.body ?: run { resp.close(); return emptyList() }
+            val reader = JsonReader(body.charStream())
             reader.beginObject()
             val list = mutableListOf<RawChannel>()
             while (reader.hasNext()) {

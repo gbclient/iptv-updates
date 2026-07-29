@@ -1139,7 +1139,8 @@ class MainActivity : AppCompatActivity() {
                 if (query.isEmpty()) {
                     restoreView()
                 } else {
-                    val results = allChannels.filter { it.name.contains(query, ignoreCase = true) }
+                    val snapshot = synchronized(allChannels) { allChannels.toList() }
+                    val results = snapshot.filter { it.name.contains(query, ignoreCase = true) }
                     if (results.isEmpty()) {
                         recyclerView.visibility = View.GONE
                         emptyText.text = "Nessun canale trovato"

@@ -118,13 +118,17 @@ class PlayerActivity : AppCompatActivity() {
     private fun resolveAndPlay(name: String, url: String) {
         if (!url.contains("create_link")) { initializePlayer(name, url); return }
         Thread {
-            val resolved = StalkerApi.resolveStreamUrl(url)
-            handler.post {
-                if (resolved.contains("create_link") || resolved == url) {
-                    showError("Risoluzione stream fallita - server stream non disponibile")
-                } else {
-                    initializePlayer(name, resolved)
+            try {
+                val resolved = StalkerApi.resolveStreamUrl(url)
+                handler.post {
+                    if (resolved.contains("create_link") || resolved == url) {
+                        showError("Risoluzione stream fallita - server stream non disponibile")
+                    } else {
+                        initializePlayer(name, resolved)
+                    }
                 }
+            } catch (e: Exception) {
+                handler.post { showError("Errore risoluzione stream: ${e.message}") }
             }
         }.start()
     }
