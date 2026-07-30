@@ -210,6 +210,7 @@ object StalkerApi {
     private var lastUsedEp = ""
     private var lastUsedMac = ""
     private var lastUsedType = "stb"
+    private var lastToken: String? = null
 
     private fun buildReq(url: String, ua: String): Request {
         val host = try { URL(url).host } catch (_: Exception) { "" }
@@ -443,6 +444,7 @@ object StalkerApi {
                             lastUsedEp = ep
                             lastUsedMac = macFmt
                             lastUsedType = type
+                            lastToken = res.token
                             return res
                         }
                     }
@@ -558,5 +560,45 @@ object StalkerApi {
             return "${streamUrl}${sep}token=${URLEncoder.encode(newToken, "UTF-8")}"
         }
         return streamUrl
+    }
+
+    // Usa la sessione esistente (ultimo handshake) per risolvere un create_link
+    // Ogni chiamata genera un nuovo stream URL senza creare una nuova sessione
+    fun resolveCreateLink(cmd: String): String? {
+        val ep = getApiBase()
+        val mac = getApiMac()
+        val token = lastToken
+        if (ep.isBlank() || mac.isBlank() || token == null) {
+            lastError = "nessuna sessione attiva"
+            return null
+        }
+        val usedMac = mac.replace(":", "").replace("-", "").toCharArray().mapIndexed { i, c -> if (i > 0 && i % 2 == 0) ":$c" else "$c" }.joinToString("")
+        val createUrl = "$ep?type=itv&mac=$usedMac&action=create_link&cmd=${URLEncoder.encode(cmd, "UTF-8")}&token=${URLEncoder.encode(token, "UTF-8")}"
+        val streamUrl = resolveCmdUrl(createUrl) ?: run {
+            // Se fallisce, prova con handshake fresco
+            lastError = "create_link fallito con sessione esistente"
+            return null
+        }
+        if (!streamUrl.contains("token=") && !streamUrl.contains("ticket=") && !streamUrl.contains("auth=")) {
+            val sep = if (streamUrl.contains('?')) "&" else "?"
+            return "${streamUrl}${sep}token=${URLEncoder.encode(token, "UTF-8")}"
+        }
+        return streamUrl
+    }
+
+    // Mantiene viva la sessione con get_profile
+    fun keepSessionAlive(config: StalkerConfig): Boolean {
+        val ep = getApiBase()
+        val mac = getApiMac()
+        val token = lastToken
+        if (ep.isBlank() || mac.isBlank() || token == null) return false
+        val url = "$ep?type=stb&JsHttpRequest=1&mac=$mac&action=get_profile&stb_lang=en&timezone=UTC&token=${URLEncoder.encode(token, "UTF-8")}"
+        val res = apiGet(url)
+        if (res?.error != null) {
+            // Sessione scaduta, rifai handshake
+            val hs = handshakeOnly(config)
+            return hs?.token != null
+        }
+        return res != null
     }
 }

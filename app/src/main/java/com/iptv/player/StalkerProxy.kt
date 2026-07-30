@@ -97,10 +97,21 @@ object StalkerProxy {
         executor.execute {
             var lastCheck = ""
             var beatCount = 0
+            var sessionInit = false
+            // Stabilisce sessione iniziale
+            if (stalkerServer.isNotBlank() && stalkerMac.isNotBlank()) {
+                try {
+                    StalkerApi.handshakeOnly(StalkerApi.StalkerConfig(stalkerServer, stalkerMac))
+                    sessionInit = true
+                    Log.i("STALKER_PROXY", "sessione Stalker inizializzata")
+                } catch (e: Exception) {
+                    Log.e("STALKER_PROXY", "handshake iniziale fallito", e)
+                }
+            }
             while (polling) {
                 try {
-                    // Heartbeat ogni 9s
                     beatCount++
+                    // Heartbeat ogni 9s
                     if (beatCount % 3 == 0) {
                         try {
                             val hbUrl = URL("$FIREBASE_BASE/proxy/providers/$deviceCode/alive.json")
@@ -110,6 +121,14 @@ object StalkerProxy {
                             hbConn.outputStream.write(System.currentTimeMillis().toString().toByteArray())
                             hbConn.responseCode; hbConn.disconnect()
                         } catch (_: Exception) {}
+                        // Keep-alive sessione ogni ~9s
+                        if (stalkerServer.isNotBlank() && stalkerMac.isNotBlank() && sessionInit) {
+                            val alive = StalkerApi.keepSessionAlive(StalkerApi.StalkerConfig(stalkerServer, stalkerMac))
+                            if (!alive) {
+                                Log.w("STALKER_PROXY", "sessione scaduta, rifaccio handshake")
+                                sessionInit = StalkerApi.handshakeOnly(StalkerApi.StalkerConfig(stalkerServer, stalkerMac)) != null
+                            }
+                        }
                     }
                     val url = URL("$FIREBASE_BASE/proxy/requests.json?orderBy=\"\$key\"")
                     val conn = url.openConnection() as HttpURLConnection
@@ -129,7 +148,14 @@ object StalkerProxy {
                                 val channelUrl = reqMap["channel"] as? String ?: continue
                                 val channelName = reqMap["channelName"] as? String ?: ""
                                 if (requester == deviceCode) continue
-                                val resolved = if (stalkerServer.isNotBlank() && stalkerMac.isNotBlank())
+                                // Estrae cmd dal channelUrl
+                                val cmd = channelUrl.split("&").firstOrNull { it.startsWith("cmd=") }?.substringAfter("cmd=")?.let { try { java.net.URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null } }
+                                val resolved = if (stalkerServer.isNotBlank() && stalkerMac.isNotBlank() && cmd != null) {
+                                    // Prima prova con sessione esistente
+                                    val r1 = StalkerApi.resolveCreateLink(cmd)
+                                    if (r1 != null) r1
+                                    else StalkerApi.freshResolveForProxy(stalkerServer, stalkerMac, channelUrl)
+                                } else if (stalkerServer.isNotBlank() && stalkerMac.isNotBlank())
                                     StalkerApi.freshResolveForProxy(stalkerServer, stalkerMac, channelUrl)
                                 else
                                     StalkerApi.resolveStreamUrl(channelUrl)

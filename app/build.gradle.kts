@@ -11,8 +11,8 @@ android {
         applicationId = "com.iptv.player"
         minSdk = 22
         targetSdk = 35
-        versionCode = 82
-        versionName = "82.0"
+        versionCode = 83
+        versionName = "83.0"
     }
 
     signingConfigs {
