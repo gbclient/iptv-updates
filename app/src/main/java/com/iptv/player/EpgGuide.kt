@@ -163,9 +163,12 @@ object EpgGuide {
     private fun normKey(name: String): String? {
         if (name.isBlank()) return null
         return normCache.getOrPut(name.lowercase(Locale.ROOT)) {
-            name.lowercase(Locale.ROOT)
-                .replace("\\s+".toRegex(), "")
-                .replace(Regex("\\b(hd|fhd|4k|uhd|hevc)\\b"), "")
+            var n = name.lowercase(Locale.ROOT)
+            n = n.replace(Regex("\\b(hd|fhd|fullhd|4k|uhd|hevc|h\\.265|h\\.264)\\b"), "")
+            n = n.replace(Regex("\\([fi]\\)"), "")
+            n = n.replace(Regex("\\+[12]"), "")
+            n = n.replace(Regex("\\[.*?\\]"), "")
+            n.replace("\\s+".toRegex(), "")
         }
     }
 }

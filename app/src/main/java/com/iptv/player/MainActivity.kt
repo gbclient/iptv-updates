@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit
 class MainActivity : AppCompatActivity() {
 
     companion object {
-        const val VERSION = 86
+        const val VERSION = 87
         private const val PROXY_PLAY_REQ = 1001
     }
 
@@ -1219,11 +1219,11 @@ class MainActivity : AppCompatActivity() {
             }
             mainHandler.post { statusText.text = Language.t(this, "epg_parsing") }
             val (programmes, channelNames) = EpgParser.parse(xml)
-            epgAllProgrammes = programmes
             val mapped = programmes.map { p ->
                 val displayName = channelNames[p.channel] ?: p.channel
                 p.copy(channel = displayName)
             }
+            epgAllProgrammes = mapped
             val byChannel = mapped.groupBy { normalizeName(it.channel) }
             mainHandler.post { statusText.text = Language.t(this, "epg_linking") }
             val now = mutableMapOf<String, EpgParser.Programme?>()
