@@ -36,7 +36,7 @@ import java.util.concurrent.TimeUnit
 class MainActivity : AppCompatActivity() {
 
     companion object {
-        const val VERSION = 85
+        const val VERSION = 86
         private const val PROXY_PLAY_REQ = 1001
     }
 
