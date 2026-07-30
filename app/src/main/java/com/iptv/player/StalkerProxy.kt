@@ -21,7 +21,8 @@ object StalkerProxy {
         val name: String = "",
         val channels: String = "[]",
         val alive: Long = 0L,
-        val portal: String = ""
+        val portal: String = "",
+        val relayIp: String = ""
     )
 
     data class ProxyRequest(
@@ -47,6 +48,7 @@ object StalkerProxy {
         } catch (e: Exception) {
             Log.e("STALKER_PROXY", "relay start error", e)
         }
+        val relayIp = relayServer?.getLocalIpAddress() ?: ""
         executor.execute {
             try {
                 val chanJson = gson.toJson(channels)
@@ -54,7 +56,8 @@ object StalkerProxy {
                     "name" to portalName,
                     "channels" to chanJson,
                     "alive" to System.currentTimeMillis(),
-                    "portal" to portalUrl
+                    "portal" to portalUrl,
+                    "relayIp" to relayIp
                 ))
                 val url = URL("$FIREBASE_BASE/proxy/providers/$deviceCode.json")
                 val conn = url.openConnection() as HttpURLConnection
@@ -135,12 +138,18 @@ object StalkerProxy {
                                     resolved
                                 else
                                     "_FAIL_:${resolveErr ?: "unknown"}"
+                                // Se il relay è attivo e la risoluzione è ok, usa il relay locale
+                                val relayUrl = if (resolvedVal.startsWith("http") && !resolvedVal.startsWith("_FAIL_")) {
+                                    relayServer?.addRelay(reqId, resolvedVal)
+                                    val localIp = relayServer?.getLocalIpAddress() ?: ""
+                                    if (localIp.isNotBlank()) "http://$localIp:8889/stream/$reqId" else resolvedVal
+                                } else resolvedVal
                                 val updateUrl = URL("$FIREBASE_BASE/proxy/requests/$reqId.json")
                                 val updateConn = updateUrl.openConnection() as HttpURLConnection
                                 updateConn.requestMethod = "PATCH"; updateConn.doOutput = true
                                 updateConn.connectTimeout = 3000; updateConn.readTimeout = 3000
-                                updateConn.outputStream.write(gson.toJson(mapOf("resolved" to resolvedVal)).toByteArray())
-                                Log.i("STALKER_PROXY", "resolved $channelName -> $resolvedVal (HTTP ${updateConn.responseCode})")
+                                updateConn.outputStream.write(gson.toJson(mapOf("resolved" to relayUrl)).toByteArray())
+                                Log.i("STALKER_PROXY", "resolved $channelName -> relay $relayUrl (HTTP ${updateConn.responseCode})")
                                 updateConn.disconnect()
                             }
                         } catch (e: Exception) {
@@ -173,8 +182,9 @@ object StalkerProxy {
                 val channels = m["channels"] as? String ?: "[]"
                 val alive = (m["alive"] as? Double)?.toLong() ?: 0L
                 val portal = m["portal"] as? String ?: ""
+                val relayIp = m["relayIp"] as? String ?: ""
                 val isAlive = System.currentTimeMillis() - alive < 15000
-                if (isAlive) key to ProxyProvider(name, channels, alive, portal) else null
+                if (isAlive) key to ProxyProvider(name, channels, alive, portal, relayIp) else null
             }
         } catch (e: Exception) {
             Log.e("STALKER_PROXY", "getProviders error", e)
