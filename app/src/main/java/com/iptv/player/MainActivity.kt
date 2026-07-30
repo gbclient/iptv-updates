@@ -52,6 +52,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var filterLive: TextView
     private lateinit var filterVod: TextView
     private lateinit var filterSeries: TextView
+    private lateinit var filterEpg: TextView
     private lateinit var settingsBtn: TextView
     private lateinit var playlistBtn: TextView
     private lateinit var addBtn: TextView
@@ -102,6 +103,7 @@ class MainActivity : AppCompatActivity() {
         filterLive = findViewById(R.id.filterLive)
         filterVod = findViewById(R.id.filterVod)
         filterSeries = findViewById(R.id.filterSeries)
+        filterEpg = findViewById(R.id.filterEpg)
         settingsBtn = findViewById(R.id.settingsBtn)
         playlistBtn = findViewById(R.id.playlistBtn)
         proxyBtn = findViewById(R.id.proxyBtn)
@@ -149,6 +151,7 @@ class MainActivity : AppCompatActivity() {
         filterLive.setOnLongClickListener { setContentFilter(null); true }
         filterVod.setOnLongClickListener { setContentFilter(null); true }
         filterSeries.setOnLongClickListener { setContentFilter(null); true }
+        filterEpg.setOnClickListener { showEpgGuide() }
 
         codeText.setOnClickListener { switchPlaylist(1) }
         codeText.setOnLongClickListener {
@@ -1254,6 +1257,10 @@ class MainActivity : AppCompatActivity() {
                 }
                 mainHandler.postDelayed({ statusText.visibility = View.GONE }, 5000)
             }
+            // EPG auto-refresh ogni 30 min
+            mainHandler.postDelayed({
+                loadEpgIfNeeded(epgUrl)
+            }, 30 * 60 * 1000L)
         }
     }
 
@@ -1410,6 +1417,14 @@ class MainActivity : AppCompatActivity() {
             .setView(scroll)
             .setPositiveButton(Language.t(ctx, "ok"), null)
             .show()
+    }
+
+    private fun showEpgGuide() {
+        if (allChannels.isEmpty()) {
+            Toast.makeText(this, "Carica una playlist prima", Toast.LENGTH_SHORT).show()
+            return
+        }
+        EpgGuide.show(this, allChannels, epgAllProgrammes)
     }
 
     private fun showThemeDialog() {

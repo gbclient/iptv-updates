@@ -57,5 +57,14 @@
         android:gravity="center"
         android:layout_marginTop="2dp"
         android:visibility="gone" />
+    <ProgressBar
+        android:id="@+id/epgProgress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="2dp"
+        android:layout_marginTop="2dp"
+        android:max="100"
+        android:progressDrawable="@drawable/epg_progress"
+        android:visibility="gone" />
 
 </LinearLayout>

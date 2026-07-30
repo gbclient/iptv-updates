@@ -4,6 +4,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.ImageView
+import android.widget.ProgressBar
 import android.widget.TextView
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
@@ -26,6 +27,7 @@ class ChannelAdapter(
         val groupText: TextView = view.findViewById(R.id.channelGroup)
         val logoImage: ImageView = view.findViewById(R.id.channelLogo)
         val epgText: TextView = view.findViewById(R.id.channelEpg)
+        val epgProgress: ProgressBar = view.findViewById(R.id.epgProgress)
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -59,13 +61,26 @@ class ChannelAdapter(
                 val nextTime = if (next.start > 0) "${timeFmt.format(Date(next.start))}" else ""
                 holder.epgText.text = "● ${now.title} ($nowTime)\n$nextTime ▶ ${next.title}"
                 holder.epgText.visibility = View.VISIBLE
+                val elapsed = (System.currentTimeMillis() - now.start).toFloat()
+                val total = (now.stop - now.start).toFloat()
+                val progress = if (total > 0) (elapsed / total * 100).toInt().coerceIn(0, 100) else 0
+                holder.epgProgress.progress = progress
+                holder.epgProgress.visibility = View.VISIBLE
             }
             now != null -> {
                 val nowTime = if (now.stop > 0) "fino ${timeFmt.format(Date(now.stop))}" else ""
                 holder.epgText.text = "● ${now.title} ($nowTime)"
                 holder.epgText.visibility = View.VISIBLE
+                val elapsed = (System.currentTimeMillis() - now.start).toFloat()
+                val total = (now.stop - now.start).toFloat()
+                val progress = if (total > 0) (elapsed / total * 100).toInt().coerceIn(0, 100) else 0
+                holder.epgProgress.progress = progress
+                holder.epgProgress.visibility = View.VISIBLE
             }
-            else -> holder.epgText.visibility = View.GONE
+            else -> {
+                holder.epgText.visibility = View.GONE
+                holder.epgProgress.visibility = View.GONE
+            }
         }
 
         val nowTitle = now?.let { prog ->
