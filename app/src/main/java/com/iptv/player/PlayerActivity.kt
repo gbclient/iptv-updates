@@ -38,6 +38,9 @@ class PlayerActivity : AppCompatActivity() {
 
     private var player: ExoPlayer? = null
     private val handler = Handler(Looper.getMainLooper())
+    private var hadError = false
+    private var bufferingStart = 0L
+    private var isProxy = false
 
     companion object {
         private const val EXTRA_CHANNEL_NAME = "channel_name"
@@ -102,6 +105,7 @@ class PlayerActivity : AppCompatActivity() {
         val epgNext = intent.getStringExtra(EXTRA_EPG_NEXT)
 
         if (url.isBlank()) { showError("URL non valido"); return }
+        isProxy = intent.getBooleanExtra("isProxy", false)
         title = name
 
         // Mostra EPG overlay
@@ -133,6 +137,8 @@ class PlayerActivity : AppCompatActivity() {
         }.start()
     }
 
+
+
     private fun initializePlayer(name: String, url: String) {
         val prefs = getSharedPreferences("iptv_prefs", Context.MODE_PRIVATE)
         val ua = prefs.getString("user_agent", "VLC/3.0.20 LibVLC/3.0.20")?.takeIf { it.isNotBlank() } ?: "VLC/3.0.20 LibVLC/3.0.20"
@@ -160,23 +166,59 @@ class PlayerActivity : AppCompatActivity() {
                 exoPlayer.playWhenReady = true
                 exoPlayer.prepare()
                 exoPlayer.addListener(object : Player.Listener {
+                    var retryCount = 0
                     override fun onPlaybackStateChanged(state: Int) {
                         when (state) {
-                            Player.STATE_BUFFERING -> progressBar.visibility = View.VISIBLE
-                            Player.STATE_READY -> { progressBar.visibility = View.GONE; errorText.visibility = View.GONE }
+                            Player.STATE_BUFFERING -> {
+                                progressBar.visibility = View.VISIBLE
+                                if (bufferingStart == 0L) bufferingStart = System.currentTimeMillis()
+                            }
+                            Player.STATE_READY -> {
+                                progressBar.visibility = View.GONE; errorText.visibility = View.GONE; retryCount = 0; bufferingStart = 0L
+                            }
                             Player.STATE_ENDED -> finish()
                             Player.STATE_IDLE -> {}
                         }
                     }
                     override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-                        progressBar.visibility = View.GONE
-                        showError("Errore: ${error.localizedMessage ?: error.errorCodeName}")
+                        progressBar.visibility = View.GONE; hadError = true
+                        if (isProxy) {
+                            handler.postDelayed({ finish() }, 2000)
+                        } else if (retryCount < 2 && url.contains("create_link")) {
+                            retryCount++
+                            showError("Riprovo ($retryCount/3)...")
+                            handler.postDelayed({ resolveAndPlay(name, url) }, 1500)
+                        } else {
+                            showError("Errore: ${error.localizedMessage ?: error.errorCodeName}")
+                            handler.postDelayed({ finish() }, 3000)
+                        }
+                    }
+                })
+                handler.post(object : Runnable {
+                    override fun run() {
+                        if (bufferingStart > 0 && System.currentTimeMillis() - bufferingStart > 12000) {
+                            hadError = true
+                            exoPlayer.stop()
+                            if (isProxy) {
+                                finish()
+                            } else {
+                                showError("Timeout buffering - riprovo...")
+                                handler.postDelayed({ resolveAndPlay(name, url) }, 1500)
+                            }
+                            bufferingStart = 0L
+                        }
+                        handler.postDelayed(this, 5000)
                     }
                 })
             }
     }
 
     private fun showError(msg: String) { errorText.text = msg; errorText.visibility = View.VISIBLE; progressBar.visibility = View.GONE }
+
+    override fun finish() {
+        setResult(RESULT_OK, Intent().putExtra("streamError", hadError))
+        super.finish()
+    }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         return when (keyCode) {

@@ -26,7 +26,7 @@ object StalkerApi {
         val error: String? = null
     )
 
-    private class ApiResult(
+    class ApiResult(
         val error: String? = null,
         val token: String? = null,
         val array: JsonArray? = null,
@@ -189,8 +189,9 @@ object StalkerApi {
             }
         }
 
-        eps.add(base)
-        if (root != base) eps.add(root)
+        // Prova l'URL esatto prima
+        eps.add(0, base)
+        if (root != base && !eps.contains(root)) eps.add(1, root)
 
         return eps.distinct()
     }
@@ -206,6 +207,9 @@ object StalkerApi {
     }
 
     private var lastError: String? = null
+    private var lastUsedEp = ""
+    private var lastUsedMac = ""
+    private var lastUsedType = "stb"
 
     private fun buildReq(url: String, ua: String): Request {
         val host = try { URL(url).host } catch (_: Exception) { "" }
@@ -375,42 +379,183 @@ object StalkerApi {
 
     private fun resolveCmdUrl(cmdUrl: String): String? {
         return try {
-            val rb = Request.Builder().url(cmdUrl).header("User-Agent", "Mozilla/5.0 (QtEmbedded; U; Linux; C)").header("Accept", "*/*")
-            val resp = client.newCall(rb.build()).execute()
-            if (resp.code != 200) return null
-            val body = resp.body?.string() ?: return null
+            android.util.Log.i("STALKER", "resolve: $cmdUrl")
+            val resp = client.newCall(buildReq(cmdUrl, "Mozilla/5.0 (QtEmbedded; U; Linux; C)")).execute()
+            val code = resp.code
+            val body = resp.body?.string()
+            android.util.Log.i("STALKER", "resolve HTTP $code → ${body?.take(500)}")
+            if (code != 200) { lastError = "resolve HTTP $code"; return null }
+            if (body.isNullOrBlank()) { lastError = "resolve body vuoto"; return null }
+
             val json = try { JsonParser.parseString(body).asJsonObject } catch (_: Exception) { return null }
             val js = json.get("js")
-            val cmd = when {
+            var cmd: String? = when {
                 js?.isJsonObject == true -> js.asJsonObject.get("cmd")?.asString
                 js?.isJsonArray == true -> js.asJsonArray.firstOrNull()?.asJsonObject?.get("cmd")?.asString
                 else -> null
             }
+            if (cmd.isNullOrBlank()) cmd = json.get("cmd")?.asString
+            if (cmd.isNullOrBlank()) cmd = json.get("url")?.asString
             if (cmd.isNullOrBlank()) {
-                android.util.Log.w("STALKER", "resolved cmd is blank: ${body.take(300)}")
+                android.util.Log.w("STALKER", "no cmd in response: ${body.take(500)}")
+                lastError = "risposta senza cmd"
                 return null
             }
             val cleaned = cmd.trim().replace("ffmpeg ", "").replace("fork ", "").trim()
             if (cleaned != cmd) android.util.Log.i("STALKER", "cmd cleaned: $cmd -> $cleaned")
-            if (!cleaned.startsWith("http://") && !cleaned.startsWith("https://")) return null
+            if (!cleaned.contains("://")) { lastError = "cmd non e' URL: $cleaned"; return null }
             cleaned
         } catch (e: Exception) {
-            android.util.Log.e("STALKER", "resolver error: ${e.message}")
+            val msg = e.message ?: ""
+            lastError = msg
+            android.util.Log.e("STALKER", "resolver error: $msg")
             null
         }
+    }
+
+    fun getLastError(): String? = lastError
+
+    fun handshakeOnly(config: StalkerConfig): ApiResult? {
+        cookieStore.clear()
+        lastUsedEp = ""
+        lastUsedMac = ""
+        val rawMac = config.mac.replace(":", "").replace("-", "").replace(" ", "").uppercase()
+        val endpoints = generateEndpoints(config.server.trimEnd('/'))
+        val rawMacArr = arrayListOf(rawMac, config.mac.trim())
+        if (rawMacArr.none { it.contains(":") }) {
+            rawMacArr.add(rawMac.chunked(2).joinToString(":"))
+        }
+        for (ep in endpoints) {
+            for (macFmt in rawMacArr) {
+                for ((ua, type) in listOf(
+                    "Mozilla/5.0 (QtEmbedded; U; Linux; C)" to "stb",
+                    "Mozilla/5.0 (QtEmbedded; U; Linux; Android_1.0; en-us;)" to "mag"
+                )) {
+                    val did = md5(macFmt.replace(":", "").replace("-", ""))
+                    for (urlSuffix in listOf(
+                        "?type=$type&action=handshake&JsHttpRequest=1&mac=$macFmt&stb_lang=en&timezone=UTC&token=&device_id=$did",
+                        "?type=$type&action=handshake&JsHttpRequest=1&mac=$macFmt&stb_lang=en&timezone=UTC&token=",
+                        "?type=$type&action=handshake&mac=$macFmt&stb_lang=en&timezone=UTC&token="
+                    )) {
+                        val url = "$ep$urlSuffix"
+                        val res = apiGet(url, ua)
+                        if (res != null && res.token != null) {
+                            lastUsedEp = ep
+                            lastUsedMac = macFmt
+                            lastUsedType = type
+                            return res
+                        }
+                    }
+                }
+            }
+        }
+        return null
+    }
+
+    private fun getApiBase(): String {
+        if (lastUsedEp.isNotBlank()) return lastUsedEp
+        return generateEndpoints("").firstOrNull() ?: ""
+    }
+
+    private fun getApiMac(): String {
+        if (lastUsedMac.isNotBlank()) return lastUsedMac
+        return ""
+    }
+
+    fun fetchGenres(token: String): List<StalkerGenre> {
+        val ep = getApiBase()
+        val mac = getApiMac()
+        if (ep.isBlank() || mac.isBlank()) return emptyList()
+        apiGet("$ep?type=stb&JsHttpRequest=1&mac=$mac&action=get_profile&stb_lang=en&timezone=UTC&token=$token")
+        val genResult = apiGet("$ep?type=itv&JsHttpRequest=1&mac=$mac&action=get_genres&token=$token")
+        return parseGenres(genResult?.array)
+    }
+
+    fun fetchChannelsOnly(token: String, genres: List<StalkerGenre>): StalkerResult {
+        val ep = getApiBase()
+        val mac = getApiMac()
+        if (ep.isBlank() || mac.isBlank()) return StalkerResult(error = "Nessun endpoint valido")
+        val rawChannels = fetchChannelsStreaming("$ep?type=itv&JsHttpRequest=1&mac=$mac&action=get_all_channels&token=$token")
+        val genreMap = genres.associate { it.id to it.title }
+        val streamBase = "$ep?type=itv&mac=$mac"
+        val channels = rawChannels.mapIndexed { i, it ->
+            val chId = it.id.ifBlank { "$i" }
+            val chCmd = (it.cmd ?: chId).trim().replace("\n", "").replace("\r", "")
+            val genreKey = it.tvGenreId ?: it.cmd?.substringBefore("_") ?: chId
+            Channel(
+                name = it.name.ifBlank { "Canale $i" },
+                url = "$streamBase&action=create_link&cmd=${URLEncoder.encode(chCmd, "UTF-8")}&token=${URLEncoder.encode(token, "UTF-8")}",
+                logo = it.logo,
+                group = genreMap[genreKey] ?: "Altro"
+            )
+        }
+        val cats = genres.map { g ->
+            Category(g.title, channels.count { c -> c.group == g.title })
+        }.sortedByDescending { it.count }
+        return StalkerResult(channels = channels, categories = cats)
+    }
+
+    fun fetchGenres(config: StalkerConfig, token: String): List<StalkerGenre> {
+        val rawMac = config.mac.replace(":", "").replace("-", "").replace(" ", "").uppercase()
+        val usedEp = generateEndpoints(config.server.trimEnd('/')).firstOrNull() ?: config.server.trimEnd('/')
+        val apiItv = "$usedEp?type=itv&JsHttpRequest=1&mac=$rawMac"
+        apiGet("$usedEp?type=stb&JsHttpRequest=1&mac=$rawMac&action=get_profile&stb_lang=en&timezone=UTC&token=$token")
+        val genResult = apiGet("$apiItv&action=get_genres&token=$token")
+        return parseGenres(genResult?.array)
+    }
+
+    fun fetchChannelsOnly(config: StalkerConfig, token: String, genres: List<StalkerGenre>): StalkerResult {
+        val rawMac = config.mac.replace(":", "").replace("-", "").replace(" ", "").uppercase()
+        val usedEp = generateEndpoints(config.server.trimEnd('/')).firstOrNull() ?: config.server.trimEnd('/')
+        val apiItv = "$usedEp?type=itv&JsHttpRequest=1&mac=$rawMac"
+        val rawChannels = fetchChannelsStreaming("$apiItv&action=get_all_channels&token=$token")
+        val genreMap = genres.associate { it.id to it.title }
+        val streamBase = "$usedEp?type=itv&mac=$rawMac"
+        val channels = rawChannels.mapIndexed { i, it ->
+            val chId = it.id.ifBlank { "$i" }
+            val chCmd = (it.cmd ?: chId).trim().replace("\n", "").replace("\r", "")
+            val genreKey = it.tvGenreId ?: it.cmd?.substringBefore("_") ?: chId
+            Channel(
+                name = it.name.ifBlank { "Canale $i" },
+                url = "$streamBase&action=create_link&cmd=${URLEncoder.encode(chCmd, "UTF-8")}&token=${URLEncoder.encode(token, "UTF-8")}",
+                logo = it.logo,
+                group = genreMap[genreKey] ?: "Altro"
+            )
+        }
+        val cats = genres.map { g ->
+            Category(g.title, channels.count { c -> c.group == g.title })
+        }.sortedByDescending { it.count }
+        return StalkerResult(channels = channels, categories = cats)
     }
 
     fun resolveStreamUrl(channelUrl: String): String {
         if (!channelUrl.contains("create_link")) return channelUrl
         val streamUrl = resolveCmdUrl(channelUrl) ?: return channelUrl
+        if (streamUrl.contains("token=") || streamUrl.contains("ticket=") || streamUrl.contains("auth=")) return streamUrl
         val portalHost = extractHost(channelUrl)
         val streamHost = extractHost(streamUrl)
         if (portalHost == streamHost) {
             val token = channelUrl.split("&").firstOrNull { it.startsWith("token=") }?.substringAfter("token=")?.let { try { URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null } }
             if (token != null) {
                 val sep = if (streamUrl.contains('?')) "&" else "?"
-                return "${streamUrl}${sep}token=${token}"
+                return "${streamUrl}${sep}token=${URLEncoder.encode(token, "UTF-8")}"
             }
+        }
+        return streamUrl
+    }
+
+    // Per proxy: handshake fresco per ogni richiesta, cosi ogni client ha sessione indipendente
+    fun freshResolveForProxy(server: String, mac: String, channelUrl: String): String? {
+        val hs = handshakeOnly(StalkerConfig(server, mac)) ?: run { lastError = "handshake fresco fallito"; return null }
+        val newToken = hs.token ?: return null
+        // Estrae cmd dal channelUrl originale
+        val cmd = channelUrl.split("&").firstOrNull { it.startsWith("cmd=") }?.substringAfter("cmd=")?.let { try { URLDecoder.decode(it, "UTF-8") } catch (_: Exception) { null } } ?: return null
+        val usedMac = lastUsedMac.ifBlank { mac.replace(":", "").replace("-", "").toCharArray().mapIndexed { i, c -> if (i > 0 && i % 2 == 0) ":$c" else "$c" }.joinToString("") }
+        val createUrl = "${lastUsedEp}?type=itv&mac=$usedMac&action=create_link&cmd=${URLEncoder.encode(cmd, "UTF-8")}&token=${URLEncoder.encode(newToken, "UTF-8")}"
+        val streamUrl = resolveCmdUrl(createUrl) ?: return null
+        if (!streamUrl.contains("token=") && !streamUrl.contains("ticket=") && !streamUrl.contains("auth=")) {
+            val sep = if (streamUrl.contains('?')) "&" else "?"
+            return "${streamUrl}${sep}token=${URLEncoder.encode(newToken, "UTF-8")}"
         }
         return streamUrl
     }

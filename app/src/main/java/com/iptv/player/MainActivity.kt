@@ -30,10 +30,15 @@ import java.util.Locale
 import java.net.HttpURLConnection
 import java.net.URL
 import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
 
 class MainActivity : AppCompatActivity() {
 
-    companion object { const val VERSION = 54 }
+    companion object {
+        const val VERSION = 82
+        private const val PROXY_PLAY_REQ = 1001
+    }
 
     enum class ContentType { LIVE, VOD, SERIES }
 
@@ -50,6 +55,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var settingsBtn: TextView
     private lateinit var playlistBtn: TextView
     private lateinit var addBtn: TextView
+    private lateinit var proxyBtn: TextView
     private lateinit var splashOverlay: LinearLayout
     private lateinit var themeBtn: TextView
     private lateinit var searchBtn: TextView
@@ -71,10 +77,16 @@ class MainActivity : AppCompatActivity() {
     private var epgNow = emptyMap<String, EpgParser.Programme?>()
     private var epgNext = emptyMap<String, EpgParser.Programme?>()
     private var epgAllProgrammes = emptyList<EpgParser.Programme>()
+    private var proxyRetryChannel: com.iptv.player.model.Channel? = null
+    private var proxyRetryNow: String? = null
+    private var proxyRetryNext: String? = null
+    private var proxyRetryCount = 0
     private val executor = Executors.newSingleThreadExecutor()
     private val pollExecutor = Executors.newSingleThreadExecutor()
     private val mainHandler = Handler(Looper.getMainLooper())
     private var backPressedOnce = false
+    private var proxyEnabled = false
+    private var proxyProviderCode = ""
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -92,6 +104,7 @@ class MainActivity : AppCompatActivity() {
         filterSeries = findViewById(R.id.filterSeries)
         settingsBtn = findViewById(R.id.settingsBtn)
         playlistBtn = findViewById(R.id.playlistBtn)
+        proxyBtn = findViewById(R.id.proxyBtn)
         addBtn = findViewById(R.id.addBtn)
         splashOverlay = findViewById(R.id.splashOverlay)
         themeBtn = findViewById(R.id.themeBtn)
@@ -128,6 +141,7 @@ class MainActivity : AppCompatActivity() {
         settingsBtn.setOnClickListener { showSettingsDialog() }
         playlistBtn.setOnClickListener { showPlaylists(PlaylistManager.getAll(this)) }
         addBtn.setOnClickListener { showAddPlaylistDialog() }
+        proxyBtn.setOnClickListener { onProxyClick() }
 
         filterLive.setOnClickListener { setContentFilter(ContentType.LIVE) }
         filterVod.setOnClickListener { setContentFilter(ContentType.VOD) }
@@ -153,7 +167,101 @@ class MainActivity : AppCompatActivity() {
         startWebServer()
         checkBroadcast()
         checkDonationRequest()
+
+        // Mostra sempre i pulsanti dopo lo splash, anche senza MQTT
+        mainHandler.postDelayed({
+            if (codeText.visibility != View.VISIBLE) {
+                codeText.visibility = View.VISIBLE
+                settingsBtn.visibility = View.VISIBLE
+                themeBtn.visibility = View.VISIBLE
+                playlistBtn.visibility = View.VISIBLE
+                searchBtn.visibility = View.VISIBLE
+                infoBtn.visibility = View.VISIBLE
+                langBtn.visibility = View.VISIBLE
+                addBtn.visibility = View.VISIBLE
+                proxyBtn.visibility = View.VISIBLE
+                codeText.text = "Avvio..."
+            }
+        }, 3000)
+
         showPlaylistsOrCategories()
+    }
+
+    private fun onProxyClick() {
+        if (proxyEnabled) {
+            proxyEnabled = false
+            proxyBtn.text = "PRX"
+            proxyBtn.setTextColor(0xFF4CAF50.toInt())
+            val dev = mqttSync?.deviceCode ?: return
+            StalkerProxy.unregister(dev)
+            // Rimuovi playlist proxy
+            val all = PlaylistManager.getAll(this)
+            val proxyPl = all.find { it.url == "proxy://$dev" }
+            if (proxyPl != null) PlaylistManager.delete(this, proxyPl.id)
+            Toast.makeText(this, Language.t(this, "proxy_deactivate"), Toast.LENGTH_SHORT).show()
+            return
+        }
+        val active = PlaylistManager.getActive(this)
+        if (active != null && active.url.startsWith("stalker://")) {
+            proxyEnabled = true
+            proxyBtn.text = "PRX"
+            proxyBtn.setTextColor(0xFFFF9800.toInt())
+            val dev = mqttSync?.deviceCode ?: return
+            val path = active.url.removePrefix("stalker://")
+            val lastSlash = path.lastIndexOf('/')
+            if (lastSlash > 0) {
+                val b64 = path.substring(0, lastSlash)
+                val flags = if (b64.indexOf('/') >= 0 || b64.indexOf('+') >= 0) android.util.Base64.DEFAULT else android.util.Base64.URL_SAFE
+                val server = String(android.util.Base64.decode(b64, flags))
+                val mac = path.substring(lastSlash + 1)
+                StalkerProxy.registerAsProvider(this, dev, active.name, server, synchronized(allChannels) { allChannels.toList() }, mac)
+            }
+            // Crea playlist proxy nella lista
+            val proxyPl = Playlist(id = "proxy_$dev", name = "\uD83D\uDCE1 ${active.name}", url = "proxy://$dev")
+            PlaylistManager.addOrUpdate(this, proxyPl)
+            AlertDialog.Builder(this)
+                .setTitle("\u2705 Proxy Stalker")
+                .setMessage(Language.t(this, "proxy_activate") + "\n\n\uD83D\uDD11 $dev")
+                .setPositiveButton("OK", null)
+                .show()
+        } else {
+            // Mostra proxy disponibili direttamente
+            val providers = StalkerProxy.getProviders()
+            if (providers.isEmpty()) {
+                AlertDialog.Builder(this)
+                    .setTitle("Proxy Stalker")
+                    .setMessage(Language.t(this, "proxy_no_stalker"))
+                    .setPositiveButton("OK", null)
+                    .show()
+                return
+            }
+            val names = providers.map { "${it.second.name} (${it.first.take(6)}...)" }.toTypedArray()
+            AlertDialog.Builder(this)
+                .setTitle("\uD83D\uDCE1 Proxy disponibili")
+                .setItems(names) { _, i ->
+                    val (code, provider) = providers[i]
+                    val pl = Playlist(name = "\uD83D\uDCE1 ${provider.name}", url = "proxy://$code")
+                    PlaylistManager.addOrUpdate(this, pl)
+                    registerOnFirebase()
+                    loadChannels(pl.url)
+                }
+                .setNegativeButton("Annulla", null)
+                .show()
+        }
+    }
+
+    private fun loadProxyChannels(name: String, providerCode: String, channels: List<Channel>) {
+        if (channels.isEmpty()) { Toast.makeText(this, "Nessun canale dal proxy", Toast.LENGTH_SHORT).show(); return }
+        proxyProviderCode = providerCode
+        allChannels.clear()
+        allChannels.addAll(channels)
+        showingPlaylists = false
+        currentCategory = null
+        currentContentFilter = null
+        updateCodeText("Proxy: $name")
+        buildCategories()
+        showCategories()
+        saveChannelCache()
     }
 
     private fun checkDonationRequest() {
@@ -308,6 +416,59 @@ class MainActivity : AppCompatActivity() {
             }
         } catch (e: Exception) {
             Toast.makeText(this, Language.t(this, "download_fail") + e.message + ")", Toast.LENGTH_LONG).show()
+        }
+    }
+
+    private fun proxyRequestChannel(channel: com.iptv.player.model.Channel, now: String?, next: String?, retry: Int) {
+        if (retry >= 5) { Toast.makeText(this, "Riprova piu' tardi", Toast.LENGTH_LONG).show(); return }
+        val dev = mqttSync?.deviceCode ?: return
+        val dialog = android.app.ProgressDialog(this).apply {
+            setMessage("Richiedo canale...\n${channel.name}")
+            setCancelable(false); show()
+        }
+        proxyRetryChannel = channel; proxyRetryNow = now; proxyRetryNext = next; proxyRetryCount = retry
+        executor.execute {
+            try {
+                val resolved = StalkerProxy.requestChannel(dev, proxyProviderCode, channel)
+                mainHandler.post {
+                    dialog.dismiss()
+                    if (resolved != null && !resolved.startsWith("_FAIL_:")) {
+                        try {
+                            val intent = android.content.Intent(this@MainActivity, PlayerActivity::class.java).apply {
+                                putExtra("channel_name", channel.name)
+                                putExtra("channel_url", resolved)
+                                putExtra("epg_now", now)
+                                putExtra("epg_next", next)
+                                putExtra("epg_desc", "")
+                                putExtra("isProxy", true)
+                                addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            startActivityForResult(intent, PROXY_PLAY_REQ)
+                        } catch (e: Exception) {
+                            android.app.AlertDialog.Builder(this@MainActivity)
+                                .setTitle("Errore player").setMessage("${e.message}").setPositiveButton("OK", null).show()
+                        }
+                    } else {
+                        val errMsg = if (resolved?.startsWith("_FAIL_:") == true) resolved.removePrefix("_FAIL_:") else "timeout"
+                        android.app.AlertDialog.Builder(this@MainActivity)
+                            .setTitle("Proxy").setMessage("Risoluzione fallita: $errMsg").setPositiveButton("OK", null).show()
+                    }
+                }
+            } catch (e: Exception) {
+                mainHandler.post {
+                    dialog.dismiss()
+                    android.app.AlertDialog.Builder(this@MainActivity)
+                        .setTitle("Errore proxy").setMessage("${e.message}").setPositiveButton("OK", null).show()
+                }
+            }
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: android.content.Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == PROXY_PLAY_REQ && data?.getBooleanExtra("streamError", false) == true) {
+            val ch = proxyRetryChannel ?: return
+            proxyRequestChannel(ch, proxyRetryNow, proxyRetryNext, proxyRetryCount + 1)
         }
     }
 
@@ -563,8 +724,16 @@ class MainActivity : AppCompatActivity() {
         showingPlaylists = true
         currentCategory = null
         currentContentFilter = null
+        proxyProviderCode = ""
         val active = PlaylistManager.getActive(this)
-        statusText.text = "Playlist (${playlists.size}) - attiva: ${active?.name ?: "nessuna"}"
+        val providers = StalkerProxy.getProviders()
+        val proxyEntries = providers.filter { (code, _) ->
+            playlists.none { it.url == "proxy://$code" }
+        }.map { (code, provider) ->
+            Playlist(id = "proxyDisc_$code", name = "\uD83D\uDCE1 ${provider.name}", url = "proxy://$code")
+        }
+        val allEntries = playlists + proxyEntries
+        statusText.text = "Playlist (${playlists.size})${if (proxyEntries.isNotEmpty()) " + ${proxyEntries.size} proxy" else ""} - attiva: ${active?.name ?: "nessuna"}"
         statusText.visibility = View.VISIBLE
         emptyText.visibility = View.GONE
         progressBar.visibility = View.GONE
@@ -577,10 +746,13 @@ class MainActivity : AppCompatActivity() {
         statusText.isFocusable = true
         statusText.isFocusableInTouchMode = true
 
-        playlistAdapter = PlaylistSelectAdapter(playlists, active,
+        playlistAdapter = PlaylistSelectAdapter(allEntries, active,
             onClick = { pl ->
+                if (pl.id.startsWith("proxyDisc_")) {
+                    loadChannels(pl.url)
+                    return@PlaylistSelectAdapter
+                }
                 if (pl.id == active?.id) {
-                    // Gia' attiva: non ricaricare se canali presenti
                     if (allChannels.isNotEmpty()) {
                         showingPlaylists = false
                         showCategories()
@@ -592,6 +764,7 @@ class MainActivity : AppCompatActivity() {
                 loadChannels(pl.url)
             },
             onDelete = { pl ->
+                if (pl.id.startsWith("proxyDisc_")) return@PlaylistSelectAdapter
                 AlertDialog.Builder(this)
                     .setTitle("Elimina")
                     .setMessage("Eliminare \"${pl.name}\"?")
@@ -627,6 +800,7 @@ class MainActivity : AppCompatActivity() {
         langBtn.visibility = View.VISIBLE
         langBtn.text = when (Language.get(this)) { "en" -> "ENG"; "de" -> "DE"; else -> "ITA" }
         addBtn.visibility = View.VISIBLE
+        proxyBtn.visibility = View.VISIBLE
     }
 
     private fun applyLanguage() {
@@ -713,38 +887,57 @@ class MainActivity : AppCompatActivity() {
 
         executor.execute {
             try {
+            if (m3uUrl.startsWith("proxy://")) {
+                val code = m3uUrl.removePrefix("proxy://")
+                val providers = StalkerProxy.getProviders()
+                val match = providers.find { it.first == code }
+                if (match != null) {
+                    val (_, provider) = match
+                    val channels = StalkerProxy.loadProviderChannels(provider)
+                    mainHandler.post {
+                        progressBar.visibility = View.GONE
+                        if (channels.isEmpty()) {
+                            showEmpty("Nessun canale dal proxy (forse offline)")
+                        } else {
+                            loadProxyChannels(provider.name, code, channels)
+                        }
+                    }
+                } else {
+                    mainHandler.post {
+                        progressBar.visibility = View.GONE
+                        showEmpty("Proxy offline o codice errato")
+                    }
+                }
+                return@execute
+            }
             if (m3uUrl.startsWith("stalker://")) {
                 val path = m3uUrl.removePrefix("stalker://")
                 val lastSlash = path.lastIndexOf('/')
                 if (lastSlash > 0) {
-                    try {
-                        val b64 = path.substring(0, lastSlash)
-                        val flags = if (b64.indexOf('/') >= 0 || b64.indexOf('+') >= 0) Base64.DEFAULT else Base64.URL_SAFE
-                        val server = String(Base64.decode(b64, flags))
-                        val mac = path.substring(lastSlash + 1)
-                        android.util.Log.i("STALKER", "Server: $server | MAC: $mac | B64: $b64")
-                        val config = StalkerApi.StalkerConfig(server, mac)
-                        val result = StalkerApi.loadChannels(config, this@MainActivity)
-                        mainHandler.post {
-                            progressBar.visibility = View.GONE
-                            allChannels.clear()
-                            allChannels.addAll(result.channels)
-                            categories.clear()
-                            categories.addAll(result.categories)
-                            if (result.error != null) {
-                                showEmpty("Errore Stalker: ${result.error}")
-                            } else if (allChannels.isEmpty()) {
-                                showEmpty("Nessun canale")
-                            } else {
-                                showingPlaylists = false
-                                showCategories()
-                                saveChannelCache()
-                            }
-                        }
-                    } catch (e: Exception) {
-                        mainHandler.post {
-                            progressBar.visibility = View.GONE
-                            showEmpty("Errore Stalker: ${e.message}")
+                    val b64 = path.substring(0, lastSlash)
+                    val flags = if (b64.indexOf('/') >= 0 || b64.indexOf('+') >= 0) Base64.DEFAULT else Base64.URL_SAFE
+                    val server = try { String(Base64.decode(b64, flags)) } catch (e: Exception) { "" }
+                    val mac = path.substring(lastSlash + 1)
+                    val config = StalkerApi.StalkerConfig(server, mac)
+
+                    mainHandler.post { statusText.text = "Stalker: connessione..." }
+                    val result = try { StalkerApi.loadChannels(config, this@MainActivity) } catch (e: Exception) { StalkerApi.StalkerResult(error = e.message) }
+
+                    mainHandler.post {
+                        progressBar.visibility = View.GONE
+                        allChannels.clear()
+                        allChannels.addAll(result.channels)
+                        categories.clear()
+                        categories.addAll(result.categories)
+                        val err = result.error
+                        if (err != null) {
+                            showEmpty("Stalker: $err")
+                        } else if (allChannels.isEmpty()) {
+                            showEmpty("Stalker: nessun canale trovato")
+                        } else {
+                            showingPlaylists = false
+                            showCategories()
+                            saveChannelCache()
                         }
                     }
                 }
@@ -996,7 +1189,11 @@ class MainActivity : AppCompatActivity() {
 
         channelAdapter = ChannelAdapter(filtered, { channel, now, next ->
             FavoritesManager.addToHistory(this, channel.url)
-            PlayerActivity.start(this, channel, now, next)
+            if (proxyProviderCode.isNotEmpty()) {
+                proxyRequestChannel(channel, now, next, 0)
+            } else {
+                PlayerActivity.start(this, channel, now, next)
+            }
         }, epgNow, epgNext,
             onLongClick = { ch ->
                 val isFav = FavoritesManager.toggleFavorite(this, ch.url)
