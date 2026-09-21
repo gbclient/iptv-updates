@@ -1,0 +1,12 @@
+name: probe
+on:
+  workflow_dispatch:
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: hit
+        run: |
+          curl -sS -o /tmp/m.html -w "HTTP %{http_code} size=%{size_download} ip=%{remote_ip}\n" "https://xromitalia.com/xrom-ui-core.php" -H "X-Requested-With: com.xromita.lastsamurai" -H "Referer: https://xromitalia.com/" -A "Mozilla/5.0 (Linux; Android 13; SM-S918B) AppleWebKit/537.36"
+          head -c 200 /tmp/m.html
